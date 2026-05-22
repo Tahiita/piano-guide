@@ -1,473 +1,564 @@
-import { useState, useMemo } from "react";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#1a2a3a;color:#e8f0f8;min-height:100vh}
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+#app{display:flex;flex-direction:column;min-height:100vh}
 
-const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const ENHARMONIC = {"Db":"C#","Eb":"D#","Fb":"E","Gb":"F#","Ab":"G#","Bb":"A#","Cb":"B","E#":"F","B#":"C"};
-const MAJOR_SCALE  = [0,2,4,5,7,9,11];
-const NAT_MINOR    = [0,2,3,5,7,8,10];
-const HARM_MINOR   = [0,2,3,5,7,8,11];
-const MELOD_MINOR  = [0,2,3,5,7,9,11];
+.hdr{background:#162233;border-bottom:1px solid rgba(255,255,255,0.07);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.hdr-title{font-size:14px;font-weight:600;letter-spacing:0.1em;color:#7ec8e3;text-transform:uppercase}
+.hdr-r{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ctrl-group{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.05);border-radius:7px;padding:5px 9px;border:1px solid rgba(255,255,255,0.07)}
+.ctrl-group label{font-size:10px;color:#7ec8e3;letter-spacing:0.07em;text-transform:uppercase;white-space:nowrap}
+.ctrl-group input[type=number],.ctrl-group select{background:transparent;border:none;color:#e8f0f8;font-size:13px;font-family:'Inter',sans-serif;width:50px;text-align:center;outline:none}
+.ctrl-group select{width:auto;cursor:pointer}
+.ctrl-group input[type=number]::-webkit-inner-spin-button{opacity:0.4}
 
-const CHORD_3 = [
-  {i:[0,4,7],s:""},  {i:[0,3,7],s:"m"}, {i:[0,3,7],s:"m"},
-  {i:[0,4,7],s:""},  {i:[0,4,7],s:""},  {i:[0,3,7],s:"m"}, {i:[0,3,6],s:"dim"}
-];
-const CHORD_4 = [
-  {i:[0,4,7,11],s:"M7"}, {i:[0,3,7,10],s:"m7"}, {i:[0,3,7,10],s:"m7"},
-  {i:[0,4,7,11],s:"M7"}, {i:[0,4,7,10],s:"7"},  {i:[0,3,7,10],s:"m7"}, {i:[0,3,6,10],s:"m7b5"}
-];
-const TENSION_EXTRA = [
-  [14,17,21],[14,17,20],[14,17,20],[14,17,21],
-  [14,17,21],[14,17,20],[13,17,20]
-];
-const TENSION_SUFFIXES = ["M7(9/11/13)","m7(9/11/13)","m7(9/11/13)","M7(9/11/13)","7(9/11/13)","m7(9/11/13)","m7b5(9/11/b13)"];
-const ROMAN = ["I","II","III","IV","V","VI","VII"];
+.icon-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:7px 12px;color:#e8f0f8;font-size:12px;font-family:'Inter',sans-serif;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.12s}
+.icon-btn:hover{background:rgba(255,255,255,0.12)}
+.icon-btn.active{background:rgba(126,200,227,0.18);border-color:rgba(126,200,227,0.4);color:#7ec8e3}
+.play-btn{background:#2d7dd2;border:none;border-radius:7px;padding:7px 16px;color:#fff;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;display:flex;align-items:center;gap:5px;transition:background 0.15s}
+.play-btn:hover{background:#3a8ee0}
+.play-btn.stop{background:#c0392b}.play-btn.stop:hover{background:#d44}
 
-const CIRCLE_DATA = [
-  {maj:"C",  min:"Am",  majSemi:0,  minSemi:9},
-  {maj:"G",  min:"Em",  majSemi:7,  minSemi:4},
-  {maj:"D",  min:"Bm",  majSemi:2,  minSemi:11},
-  {maj:"A",  min:"F#m", majSemi:9,  minSemi:6},
-  {maj:"E",  min:"C#m", majSemi:4,  minSemi:1},
-  {maj:"B",  min:"G#m", majSemi:11, minSemi:8},
-  {maj:"F#", min:"D#m", maj2:"Gb", min2:"Ebm", majSemi:6, minSemi:3},
-  {maj:"Db", min:"Bbm", majSemi:1,  minSemi:10},
-  {maj:"Ab", min:"Fm",  majSemi:8,  minSemi:5},
-  {maj:"Eb", min:"Cm",  majSemi:3,  minSemi:0},
-  {maj:"Bb", min:"Gm",  majSemi:10, minSemi:7},
-  {maj:"F",  min:"Dm",  majSemi:5,  minSemi:2},
-];
+.main{padding:14px 20px;flex:1}
+.score{display:flex;flex-direction:column;gap:10px}
+.score-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 
-const SF_SHARP = {0:0,7:1,2:2,9:3,4:4,11:5,6:6};
-const SF_FLAT  = {0:0,5:-1,10:-2,3:-3,8:-4,1:-5,6:-6};
-const FLAT_KEYS = new Set(["F","Bb","Eb","Ab","Db","Gb","Cb"]);
+.mwrap{display:flex;flex-direction:column;gap:3px}
+.mlbl{display:flex;justify-content:space-between;align-items:center;padding:0 2px}
+.mlbl span{font-size:10px;color:rgba(126,200,227,0.5);letter-spacing:0.07em;text-transform:uppercase}
+.del-meas{background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;cursor:pointer;color:rgba(255,255,255,0.25);font-size:10px;font-family:'Inter',sans-serif;transition:all 0.12s}
+.del-meas:hover{background:rgba(192,57,43,0.25);color:#ff8080;border-color:rgba(192,57,43,0.4)}
 
-const CLR = {
-  bg:"#0f1923", surface:"#162030", card:"#1a2535", border:"#263348",
-  text:"#e2e8f0", muted:"#7a93b4", accent:"#3b82f6", green:"#10b981",
-  amber:"#f59e0b", dim:"#0d1520", red:"#f87171", purple:"#a78bfa"
-};
+.measure{position:relative;height:72px;background:#162233;border-radius:9px;border:1px solid rgba(255,255,255,0.07);overflow:hidden}
+.gline{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.06);pointer-events:none;z-index:1}
 
-function isFlatInput(s){
-  const base=s.replace(/m$/i,"");
-  return FLAT_KEYS.has(base)||(base.endsWith("b")&&base.length>1);
-}
-function noteStrToSemi(s){
-  const norm=ENHARMONIC[s]??s;
-  return NOTE_NAMES.indexOf(norm);
-}
-function parseInput(raw){
-  const s=raw.trim().replace(/♭/g,"b").replace(/♯/g,"#");
-  const minMatch=s.match(/^([A-Ga-g][#b]?)\s*m(?:in)?$/i);
-  if(minMatch){
-    const minStr=minMatch[1][0].toUpperCase()+minMatch[1].slice(1);
-    const minSemi=noteStrToSemi(minStr);
-    if(minSemi<0) return null;
-    const cd=CIRCLE_DATA.find(d=>d.minSemi===minSemi);
-    if(!cd) return null;
-    const useFlat=isFlatInput(minStr)||(cd.min2&&minStr===cd.min2.replace(/m$/,""));
-    return {majSemi:cd.majSemi,minSemi:cd.minSemi,
-      displayMaj:useFlat&&cd.maj2?cd.maj2:cd.maj,
-      displayMin:useFlat&&cd.min2?cd.min2:cd.min,
-      isFlat:useFlat||FLAT_KEYS.has(cd.maj)};
-  }
-  const majStr=s[0].toUpperCase()+s.slice(1);
-  const majSemi=noteStrToSemi(majStr);
-  if(majSemi<0) return null;
-  const cd=CIRCLE_DATA.find(d=>d.majSemi===majSemi);
-  if(!cd) return null;
-  const useFlat=isFlatInput(majStr);
-  return {majSemi:cd.majSemi,minSemi:cd.minSemi,
-    displayMaj:useFlat&&cd.maj2?cd.maj2:cd.maj,
-    displayMin:useFlat&&cd.min2?cd.min2:cd.min,
-    isFlat:useFlat||FLAT_KEYS.has(cd.maj)};
-}
-function scaleOf(root,pat){return pat.map(i=>(root+i)%12);}
-function buildChords(root,toneMode){
-  const types=toneMode==="3"?CHORD_3:CHORD_4;
-  return types.map((ct,i)=>{
-    const r=(root+MAJOR_SCALE[i])%12;
-    let notes=ct.i.map(iv=>(r+iv)%12);
-    const name=NOTE_NAMES[r]+ct.s+(toneMode==="tension"?" "+TENSION_SUFFIXES[i]:"");
-    if(toneMode==="tension") notes=[...notes,...TENSION_EXTRA[i].map(iv=>(r+iv)%12)];
-    return {name,notes,degree:i+1,rootSemi:r};
-  });
-}
+.cblock{position:absolute;top:5px;bottom:5px;background:#1e3a52;border:1px solid rgba(126,200,227,0.2);border-radius:6px;display:flex;flex-direction:column;align-items:stretch;z-index:2;cursor:pointer;transition:border-color 0.1s,background 0.1s}
+.cblock:hover{border-color:rgba(126,200,227,0.45)}
+.cblock.selected{border-color:#7ec8e3;background:#1e4060;box-shadow:0 0 0 2px rgba(126,200,227,0.2)}
+.cblock.playing{background:#2d7dd2;border-color:#7ec8e3}
+.cblock.err{border-color:#e74c3c}
 
-// ── ピアノ鍵盤 ─────────────────────────────────────────
-const WHITE_SEMI=[0,2,4,5,7,9,11];
-const BLACK_WI=[0,1,3,4,5];
-const BLACK_SEMI_=[1,3,6,8,10];
+.cinner{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 10px 0 6px;gap:2px;overflow:hidden;pointer-events:none}
+.cinp{border:none;background:transparent;font-size:13px;font-weight:500;text-align:center;color:#e8f0f8;width:100%;outline:none;font-family:'Inter',sans-serif;padding:0;pointer-events:all}
+.cinp::placeholder{color:rgba(255,255,255,0.18);font-weight:300;font-size:11px}
+.cinp.playing{color:#fff}
+.dlbl{font-size:9px;color:rgba(126,200,227,0.45);pointer-events:none;letter-spacing:0.04em}
+.dlbl.playing{color:rgba(255,255,255,0.65)}
 
-function dotClr(c){
-  if(c==="amber") return CLR.amber;
-  if(c==="purple") return CLR.purple;
-  return CLR.green;
-}
+/* start marker on selected block */
+.start-marker{position:absolute;top:4px;left:4px;font-size:9px;color:#7ec8e3;opacity:0;pointer-events:none;letter-spacing:0.04em;text-transform:uppercase;font-family:'Inter',sans-serif}
+.cblock.selected .start-marker{opacity:1}
 
-function PianoKeyboard({highlightMap={}, absHighlight=null, octaves=2}){
-  const ww=20,wh=60,bw=12,bh=38,dotR=5;
-  const totalW=7*octaves*ww;
-  const whites=[],blacks=[];
-  for(let o=0;o<octaves;o++){
-    WHITE_SEMI.forEach((semi,wi)=>{
-      const ni=semi%12,ai=o*12+semi;
-      const hl=absHighlight?(absHighlight[ai]||null):(highlightMap[ni]||null);
-      whites.push({x:(o*7+wi)*ww,hl});
-    });
-    BLACK_WI.forEach((bp,bi)=>{
-      const ni=BLACK_SEMI_[bi],ai=o*12+BLACK_SEMI_[bi];
-      const hl=absHighlight?(absHighlight[ai]||null):(highlightMap[ni]||null);
-      blacks.push({x:(o*7+bp)*ww+ww-bw/2,hl});
-    });
-  }
-  return (
-    <svg width="100%" viewBox={"0 0 "+totalW+" "+(wh+4)} preserveAspectRatio="xMidYMid meet" style={{display:"block",width:"100%"}}>
-      {whites.map((k,i)=>{
-        const dc=k.hl?dotClr(k.hl.color):null;
-        return <g key={"w"+i}>
-          <rect x={whites[i].x+.5} y={.5} width={ww-1} height={wh} rx={2} fill="#e8edf2" stroke="#8899aa" strokeWidth={.5}/>
-          {k.hl&&<>
-            <circle cx={whites[i].x+ww/2} cy={wh-14} r={dotR+1} fill={dc+"4d"} stroke={dc} strokeWidth={1.5}/>
-            <text x={whites[i].x+ww/2} y={wh-14} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={700} fill={dc}>{k.hl.label}</text>
-          </>}
-        </g>;
-      })}
-      {blacks.map((k,i)=>{
-        const dc=k.hl?dotClr(k.hl.color):null;
-        return <g key={"b"+i}>
-          <rect x={blacks[i].x} y={.5} width={bw} height={bh} rx={2} fill="#1e2a38" stroke="#0a0f18" strokeWidth={.5}/>
-          {k.hl&&<>
-            <circle cx={blacks[i].x+bw/2} cy={bh-9} r={dotR} fill={dc+"4d"} stroke={dc} strokeWidth={1.5}/>
-            <text x={blacks[i].x+bw/2} y={bh-9} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontWeight={700} fill={dc}>{k.hl.label}</text>
-          </>}
-        </g>;
-      })}
-    </svg>
-  );
-}
+.rhandle{position:absolute;right:0;top:0;bottom:0;width:9px;cursor:col-resize;display:flex;align-items:center;justify-content:center;z-index:3;border-radius:0 6px 6px 0}
+.rhandle:hover{background:rgba(126,200,227,0.1)}
+.rhandle-dots{font-size:8px;color:rgba(126,200,227,0.35);line-height:1;pointer-events:none}
+.cdel{position:absolute;top:3px;right:11px;width:14px;height:14px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);cursor:pointer;font-size:9px;color:rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.12s;z-index:4;padding:0;line-height:1}
+.cblock:hover .cdel{opacity:1}
+.cdel:hover{background:rgba(192,57,43,0.35);color:#ff8080}
 
-// ── ハイライトマップ ───────────────────────────────────
-function buildScaleAllMap(notes,root){
-  const m={};
-  notes.forEach((n,i)=>{m[n]={color:n===root?"amber":"green",label:String(i+1)};});
-  return m;
-}
-function buildScaleFormAbs(notes,root){
-  const m={};
-  let prev=root;
-  notes.forEach((n,i)=>{
-    if(i===0){m[root]={color:"amber",label:"1"};return;}
-    let diff=(n-notes[i-1]+12)%12; if(!diff) diff=12;
-    let abs=prev+diff; if(abs>=24) abs-=12;
-    m[abs]={color:"green",label:String(i+1)};
-    prev=abs;
-  });
-  let octRoot=root+12; if(octRoot<24) m[octRoot]={color:"amber",label:"8"};
-  return m;
-}
-function buildChordAllMap(notes,toneMode){
-  const m={};
-  const base=toneMode==="3"?notes.slice(0,3):notes.slice(0,4);
-  const tens=toneMode==="tension"?notes.slice(4):[];
-  const labels=["R","3","5","7"];
-  base.forEach((n,i)=>{if(!m[n]) m[n]={color:i===0?"amber":"green",label:labels[i]||""};});
-  tens.forEach((n,ti)=>{if(!m[n]) m[n]={color:"purple",label:["9","11","13"][ti]||""};});
-  return m;
-}
-function buildChordFormAbs(chord,toneMode){
-  const notes=chord.notes;
-  const base=toneMode==="3"?notes.slice(0,3):notes.slice(0,4);
-  const tens=toneMode==="tension"?notes.slice(4):[];
-  const labels=["R","3","5","7"];
-  const colors=["amber","green","green","green"];
-  const rootSemi=chord.rootSemi;
-  const m={};
-  base.forEach((semi,i)=>{
-    let fromRoot=(semi-rootSemi+12)%12;
-    let abs=rootSemi+fromRoot;
-    if(i>0){
-      const prevAbs=base.slice(0,i).reduce((pa,s)=>{
-        let a=rootSemi+(s-rootSemi+12)%12; while(a<=pa) a+=12; return a;
-      },rootSemi-1);
-      while(abs<=prevAbs) abs+=12;
+.add-beat{position:absolute;top:5px;bottom:5px;background:transparent;border:1px dashed rgba(126,200,227,0.18);border-radius:6px;cursor:pointer;color:rgba(126,200,227,0.28);font-size:18px;display:flex;align-items:center;justify-content:center;z-index:2;transition:all 0.12s;font-weight:300}
+.add-beat:hover{background:rgba(126,200,227,0.06);border-color:rgba(126,200,227,0.35);color:rgba(126,200,227,0.6)}
+
+.bot-bar{display:flex;justify-content:flex-end;padding:2px 20px 12px}
+.add-meas-btn{background:transparent;border:1px solid rgba(126,200,227,0.2);border-radius:7px;padding:6px 13px;color:#7ec8e3;font-size:11px;font-family:'Inter',sans-serif;cursor:pointer;letter-spacing:0.07em;text-transform:uppercase;display:flex;align-items:center;gap:4px;transition:all 0.12s}
+.add-meas-btn:hover{background:rgba(126,200,227,0.08);border-color:rgba(126,200,227,0.4)}
+
+.piano-section{background:#111e2b;border-top:1px solid rgba(255,255,255,0.06);padding:14px 20px 18px}
+.piano-lbl{font-size:10px;color:rgba(126,200,227,0.45);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px}
+.piano-wrap{position:relative;width:100%;overflow:hidden}
+.piano-keys{position:relative;height:80px}
+.wkey{position:absolute;top:0;height:100%;background:#dce8f0;border-radius:0 0 4px 4px;border:1px solid rgba(0,0,0,0.22);border-top:none;transition:background 0.07s}
+.wkey.lit{background:#2d7dd2}
+.wkey.lit-jazz{background:#d4820a}
+.wkey-lbl{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:7px;color:rgba(0,0,0,0.25);pointer-events:none}
+.wkey.lit .wkey-lbl,.wkey.lit-jazz .wkey-lbl{color:rgba(255,255,255,0.85)}
+.bkey{position:absolute;top:0;height:54%;background:#141e28;border-radius:0 0 3px 3px;z-index:3;transition:background 0.07s;border:1px solid rgba(0,0,0,0.5);border-top:none}
+.bkey.lit{background:#2d7dd2}
+.bkey.lit-jazz{background:#d4820a}
+
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal-box{background:#162233;border:1px solid rgba(126,200,227,0.2);border-radius:12px;padding:20px;width:480px;max-width:90vw;display:flex;flex-direction:column;gap:12px}
+.modal-hdr{display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:12px;color:#7ec8e3;letter-spacing:0.08em;text-transform:uppercase}
+.modal-close{background:transparent;border:none;color:rgba(255,255,255,0.4);font-size:20px;cursor:pointer;line-height:1;padding:0}
+.modal-close:hover{color:#fff}
+.modal-ta{width:100%;height:180px;background:#111e2b;border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:#e8f0f8;font-family:monospace;font-size:11px;padding:10px;resize:vertical;outline:none}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<h2 class="sr-only">コード進行再生ツール</h2>
+<div id="app">
+  <div class="hdr">
+    <div class="hdr-title">Chord Player</div>
+    <div class="hdr-r">
+      <div class="ctrl-group"><label>BPM</label><input type="number" id="bpm" value="80" min="20" max="300"></div>
+      <div class="ctrl-group"><label>拍</label><input type="number" id="maxbeats" value="4" min="2" max="16"></div>
+      <div class="ctrl-group"><label>音源</label><select id="timbre"><option value="piano" selected>Piano</option><option value="synth">Synth</option></select></div>
+      <div class="ctrl-group"><label>Voicing</label><select id="voicing"><option value="root" selected>Root</option><option value="jazz">Jazz</option></select></div>
+      <div class="ctrl-group"><label>Style</label>
+        <select id="style">
+          <option value="simple">Simple</option>
+          <option value="backing" selected>Backing</option>
+          <option value="arp-up">Arp Up</option>
+          <option value="arp-down">Arp Down</option>
+          <option value="arp-ud">Arp Up↓Down</option>
+          <option value="arp-du">Arp Down↑Up</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
+      <button class="icon-btn" id="loop-btn" title="ループ"><i class="ti ti-repeat" aria-hidden="true"></i> Loop</button>
+      <button class="icon-btn" id="save-btn"><i class="ti ti-database" aria-hidden="true"></i> Save/Load</button>
+      <button class="play-btn" id="play-btn"><i class="ti ti-player-play" id="picon"></i><span id="plbl">Play</span></button>
+    </div>
+  </div>
+
+  <div class="main"><div class="score" id="score"></div></div>
+  <div class="bot-bar">
+    <button class="add-meas-btn" id="add-meas"><i class="ti ti-plus" aria-hidden="true"></i> 小節を追加</button>
+  </div>
+
+  <div class="piano-section">
+    <div class="piano-lbl">Keyboard — C2 to B5</div>
+    <div class="piano-wrap" id="piano-wrap">
+      <div class="piano-keys" id="piano-keys"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <span class="modal-title">Save / Load</span>
+      <button class="modal-close" id="modal-close">×</button>
+    </div>
+    <textarea class="modal-ta" id="modal-json" placeholder="JSONがここに表示されます。保存はコピー→メモ帳に貼付け。読み込みはここにJSONを貼り付けて「読み込む」。"></textarea>
+    <div class="modal-actions">
+      <button class="icon-btn" id="modal-copy">コピー</button>
+      <button class="play-btn" id="modal-load">読み込む</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script>
+const scoreEl=document.getElementById('score');
+const bpmEl=document.getElementById('bpm');
+const maxbeatsEl=document.getElementById('maxbeats');
+const timbreEl=document.getElementById('timbre');
+const voicingEl=document.getElementById('voicing');
+const styleEl=document.getElementById('style');
+const playBtn=document.getElementById('play-btn');
+const picon=document.getElementById('picon');
+const plbl=document.getElementById('plbl');
+const loopBtn=document.getElementById('loop-btn');
+const pianoKeysEl=document.getElementById('piano-keys');
+const pianoWrap=document.getElementById('piano-wrap');
+
+let measures=[{slots:[{chord:'',dur:4}]}];
+let isPlaying=false, loopOn=false, synth=null, reverb=null;
+let selectedMi=0, selectedSi=0; // start block
+
+// loop toggle
+loopBtn.addEventListener('click',()=>{
+  loopOn=!loopOn;
+  loopBtn.classList.toggle('active',loopOn);
+});
+
+// Piano C2-B5 (MIDI 36-83)
+const P_START=36, P_END=83;
+const WHITE_SEM=[0,2,4,5,7,9,11];
+
+function buildPiano(){
+  pianoKeysEl.innerHTML='';
+  const whites=[];
+  for(let m=P_START;m<=P_END;m++) if(WHITE_SEM.includes(m%12)) whites.push(m);
+  const totalW=pianoWrap.getBoundingClientRect().width||640;
+  const WW=Math.max(10,Math.floor((totalW-1)/whites.length)-1);
+  const BW=Math.round(WW*0.62);
+  pianoKeysEl.style.height='80px';
+
+  whites.forEach((midi,i)=>{
+    const k=document.createElement('div');
+    k.className='wkey'; k.id=`wk${midi}`;
+    k.style.left=(i*(WW+1))+'px'; k.style.width=WW+'px';
+    if(midi%12===0){
+      const lbl=document.createElement('div');
+      lbl.className='wkey-lbl';
+      lbl.textContent='C'+(Math.floor(midi/12)-1);
+      k.appendChild(lbl);
     }
-    if(abs>=24) abs-=12;
-    m[abs]={color:colors[i],label:labels[i]};
+    pianoKeysEl.appendChild(k);
   });
-  const lastAbs=Object.keys(m).map(Number).sort((a,b)=>a-b).pop()??rootSemi;
-  let prev=lastAbs;
-  tens.forEach((semi,ti)=>{
-    const fromRoot=(semi-rootSemi+12)%12;
-    let abs=rootSemi+fromRoot; while(abs<=prev) abs+=12;
-    if(abs>=24) abs-=12;
-    m[abs]={color:"purple",label:["9","11","13"][ti]||""};
-    prev=abs;
+
+  let wi=0;
+  for(let m=P_START;m<=P_END;m++){
+    const sem=m%12;
+    if(WHITE_SEM.includes(sem)){wi++;continue;}
+    const k=document.createElement('div');
+    k.className='bkey'; k.id=`bk${m}`;
+    k.style.width=BW+'px';
+    k.style.left=((wi-1)*(WW+1)+WW*0.65)+'px';
+    pianoKeysEl.appendChild(k);
+  }
+  pianoKeysEl.style.width=(whites.length*(WW+1))+'px';
+}
+window.addEventListener('resize',buildPiano);
+
+function litPiano(midis){
+  document.querySelectorAll('.wkey.lit,.bkey.lit,.wkey.lit-jazz,.bkey.lit-jazz').forEach(e=>e.classList.remove('lit','lit-jazz'));
+  const cls=voicingEl.value==='jazz'?'lit-jazz':'lit';
+  midis.forEach(m=>{
+    document.getElementById(`wk${m}`)?.classList.add(cls);
+    document.getElementById(`bk${m}`)?.classList.add(cls);
   });
-  return m;
 }
 
-// ── カード共通スタイル ─────────────────────────────────
-const CARD_STYLE={background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"8px 8px 6px",boxSizing:"border-box"};
-const CARD_HEADER={display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,minHeight:20};
-
-function ChordCard({chord,displayMode,toneMode}){
-  const isForm=displayMode==="form";
-  const absHL=isForm?buildChordFormAbs(chord,toneMode):null;
-  const hlMap=isForm?{}:buildChordAllMap(chord.notes,toneMode);
-  return (
-    <div style={CARD_STYLE}>
-      <div style={CARD_HEADER}>
-        <span style={{fontSize:11,fontWeight:600,color:CLR.text}}>{chord.name}</span>
-        <span style={{fontSize:10,color:CLR.muted,background:CLR.surface,padding:"1px 6px",borderRadius:4}}>{ROMAN[chord.degree-1]}</span>
-      </div>
-      <PianoKeyboard highlightMap={hlMap} absHighlight={absHL} octaves={2}/>
-    </div>
-  );
-}
-function EmptyCard({label}){
-  return (
-    <div style={CARD_STYLE}>
-      <div style={CARD_HEADER}>
-        <span style={{fontSize:11,color:CLR.border}}>——</span>
-        <span style={{fontSize:10,color:CLR.border,background:CLR.surface,padding:"1px 6px",borderRadius:4}}>{label}</span>
-      </div>
-      <PianoKeyboard highlightMap={{}} octaves={2}/>
-    </div>
-  );
-}
-function ScaleCard({label,notes,root,displayMode}){
-  const isForm=displayMode==="form";
-  const absHL=isForm?buildScaleFormAbs(notes,root):null;
-  const hlMap=isForm?{}:buildScaleAllMap(notes,root);
-  return (
-    <div style={CARD_STYLE}>
-      <div style={CARD_HEADER}>
-        <span style={{fontSize:11,color:CLR.muted}}>{label}</span>
-      </div>
-      <PianoKeyboard highlightMap={hlMap} absHighlight={absHL} octaves={2}/>
-    </div>
-  );
-}
-function BlankCard(){
-  return <div style={{...CARD_STYLE,visibility:"hidden"}}><div style={CARD_HEADER}/><PianoKeyboard highlightMap={{}} octaves={2}/></div>;
+// chord parser
+const NM={C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
+function parseChord(raw){
+  if(!raw||!raw.trim()) return null;
+  let s=raw.trim().replace(/♭/g,'b').replace(/♯/g,'#').replace(/[△Δ]/g,'M').replace(/maj/gi,'M').replace(/\bmin\b/gi,'m').replace(/\b(dim|aug|sus|add)\b/gi,x=>x.toLowerCase()).replace(/\s+/g,'');
+  let bassNote=null;
+  const si=s.indexOf('/');
+  if(si>0){
+    const bs=s.slice(si+1); s=s.slice(0,si);
+    for(const k of ['C#','Db','D#','Eb','F#','Gb','G#','Ab','A#','Bb','C','D','E','F','G','A','B'])
+      if(bs.startsWith(k)){bassNote=NM[k];break;}
+  }
+  let root=null,rest='';
+  for(const k of ['C#','Db','D#','Eb','F#','Gb','G#','Ab','A#','Bb','C','D','E','F','G','A','B'])
+    if(s.startsWith(k)){root=k;rest=s.slice(k.length);break;}
+  if(!root) return null;
+  const rm=NM[root]+60;
+  const tbl={'':[ 0,4,7],'M':[0,4,7],'m':[0,3,7],'-':[0,3,7],'7':[0,4,7,10],'M7':[0,4,7,11],'m7':[0,3,7,10],'-7':[0,3,7,10],'mM7':[0,3,7,11],'dim':[0,3,6],'dim7':[0,3,6,9],'o':[0,3,6],'o7':[0,3,6,9],'m7b5':[0,3,6,10],'-7b5':[0,3,6,10],'ø':[0,3,6,10],'aug':[0,4,8],'+':[0,4,8],'aug7':[0,4,8,10],'sus2':[0,2,7],'sus4':[0,5,7],'add9':[0,4,7,14],'6':[0,4,7,9],'m6':[0,3,7,9],'9':[0,4,7,10,14],'M9':[0,4,7,11,14],'m9':[0,3,7,10,14],'11':[0,4,7,10,14,17],'13':[0,4,7,10,14,17,21]};
+  return {rm,iv:tbl[rest]||[0,4,7],bassNote};
 }
 
-// ── サークルオブフィフス ────────────────────────────────
-function CircleOfFifths({majSemi,minSemi}){
-  const cx=130,cy=130,outerR=118,innerR=76,coreR=40;
-  const majIdx=CIRCLE_DATA.findIndex(d=>d.majSemi===majSemi);
-  const minIdx=CIRCLE_DATA.findIndex(d=>d.minSemi===minSemi);
-  return (
-    <svg width="100%" viewBox="0 0 260 260" preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
-      {CIRCLE_DATA.map((cd,i)=>{
-        const a1=(i*30-90-15)*Math.PI/180,a2=(i*30-90+15)*Math.PI/180;
-        const p=(r,a)=>[cx+r*Math.cos(a),cy+r*Math.sin(a)];
-        const [ox1,oy1]=p(outerR,a1),[ox2,oy2]=p(outerR,a2);
-        const [ix1,iy1]=p(innerR,a1),[ix2,iy2]=p(innerR,a2);
-        const dO="M"+ox1+","+oy1+" A"+outerR+","+outerR+" 0 0,1 "+ox2+","+oy2+" L"+ix2+","+iy2+" A"+innerR+","+innerR+" 0 0,0 "+ix1+","+iy1+" Z";
-        const [mx1,my1]=p(innerR,a1),[mx2,my2]=p(innerR,a2);
-        const [cx1_,cy1_]=p(coreR,a1),[cx2_,cy2_]=p(coreR,a2);
-        const dI="M"+mx1+","+my1+" A"+innerR+","+innerR+" 0 0,1 "+mx2+","+my2+" L"+cx2_+","+cy2_+" A"+coreR+","+coreR+" 0 0,0 "+cx1_+","+cy1_+" Z";
-        const am=(i*30-90)*Math.PI/180;
-        const [tlx,tly]=p(97,am),[tix,tiy]=p(60,am);
-        const isMaj=i===majIdx,isMin=i===minIdx;
-        const isAdj=majIdx>=0&&(Math.abs(i-majIdx)===1||Math.abs(i-majIdx)===11);
-        const hasDual=!!cd.maj2;
-        return (
-          <g key={i}>
-            <path d={dO} fill={isMaj?"#10b981":isAdj?"#1e4d3a":CLR.surface} stroke={CLR.border} strokeWidth={.5}/>
-            {hasDual
-              ?<><text x={tlx} y={tly-5} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={isMaj?700:400} fill={isMaj?"#fff":CLR.text}>{cd.maj}</text>
-                 <text x={tlx} y={tly+6} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={isMaj?700:400} fill={isMaj?"#fff":CLR.muted}>/{cd.maj2}</text></>
-              :<text x={tlx} y={tly} textAnchor="middle" dominantBaseline="middle" fontSize={isMaj?13:11} fontWeight={isMaj?700:400} fill={isMaj?"#fff":isAdj?"#5ecba1":CLR.text}>{cd.maj}</text>
-            }
-            <path d={dI} fill={isMin?"#0d7a56":isMaj?"#0a6346":isAdj?"#1a3d30":CLR.dim} stroke={CLR.border} strokeWidth={.5}/>
-            {hasDual
-              ?<><text x={tix} y={tiy-4} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.text}>{cd.min}</text>
-                 <text x={tix} y={tiy+5} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.muted}>/{cd.min2}</text></>
-              :<text x={tix} y={tiy} textAnchor="middle" dominantBaseline="middle" fontSize={isMin?10:9} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.text}>{cd.min}</text>
-            }
-          </g>
-        );
-      })}
-      <circle cx={cx} cy={cy} r={coreR} fill={CLR.dim} stroke={CLR.border} strokeWidth={.5}/>
-      <text x={cx} y={cy-7} textAnchor="middle" fontSize={10} fill={CLR.muted}>Circle of</text>
-      <text x={cx} y={cy+7} textAnchor="middle" fontSize={10} fill={CLR.muted}>Fifths</text>
-    </svg>
-  );
+function getVoiceMidis(parsed,mode){
+  if(!parsed) return [];
+  const {rm,iv,bassNote}=parsed;
+  let midis;
+  if(mode==='root'){
+    midis=iv.map(i=>{let m=rm+i;while(m>P_END)m-=12;while(m<P_START)m+=12;return m;});
+  } else {
+    midis=iv.map((i,idx)=>{let m=idx===0?rm-12+i:rm+i;while(m>P_END)m-=12;while(m<P_START)m+=12;return m;});
+  }
+  if(bassNote!==null){
+    let bm=P_START+(bassNote-P_START%12+12)%12;
+    while(bm+12<=Math.min(...midis))bm+=12;
+    if(bm>Math.min(...midis))bm-=12;
+    if(bm<P_START)bm+=12;
+    midis=[bm,...midis.filter(m=>m!==bm)];
+  }
+  return [...new Set(midis)].sort((a,b)=>a-b);
 }
+function midiToNote(m){return Tone.Frequency(m,'midi').toNote();}
 
-// ── 調号（五線譜）──────────────────────────────────────
-function StaffKeySignature({majSemi,isFlat}){
-  let sf;
-  if(isFlat) sf=SF_FLAT[majSemi]??0;
-  else sf=SF_SHARP[majSemi]??SF_FLAT[majSemi]??0;
-  const isSharp=sf>0,count=Math.abs(sf);
-  const VW=200,VH=96;
-  const staffLeft=46,staffRight=VW-8;
-  const line1y=74,lineGap=10;
-  const lineY=(n)=>line1y-(n-1)*lineGap;
-  const betweenY=(lo,hi)=>(lineY(lo)+lineY(hi))/2;
-  const above5Y=lineY(5)-lineGap;
-  const flatOffset=-3;
-  const flatY=[lineY(3)+flatOffset,betweenY(4,5)+flatOffset,betweenY(2,3)+flatOffset,lineY(4)+flatOffset,lineY(2)+flatOffset,betweenY(3,4)+flatOffset];
-  const sharpY=[lineY(5),betweenY(3,4),above5Y,lineY(4),betweenY(2,3),betweenY(4,5),lineY(4)];
-  const accY=isSharp?sharpY.slice(0,count):flatY.slice(0,count);
-  const symColor=isSharp?CLR.green:CLR.accent;
-  return (
-    <div style={{background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"10px 12px",boxSizing:"border-box"}}>
-      <div style={{fontSize:10,color:CLR.muted,marginBottom:4}}>調号</div>
-      <svg width="100%" viewBox={"0 0 "+VW+" "+VH} preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
-        {[1,2,3,4,5].map(n=>(
-          <line key={n} x1={8} y1={lineY(n)} x2={staffRight} y2={lineY(n)} stroke={CLR.muted} strokeWidth={.8}/>
-        ))}
-        <text x={10} y={lineY(1)+(-4)} fontSize={57} fill={CLR.muted} fontFamily="serif" dominantBaseline="auto">𝄞</text>
-        {sf===0&&<text x={staffLeft+20} y={lineY(3)+5} textAnchor="middle" fontSize={16} fill={CLR.muted}>♮</text>}
-        {accY.map((y,i)=>(
-          <text key={i} x={staffLeft+4+i*17} y={y+6} textAnchor="middle" fontSize={17} fontWeight={700} fill={symColor}>{isSharp?"♯":"♭"}</text>
-        ))}
-        <text x={VW-4} y={VH-4} textAnchor="end" fontSize={9} fill={CLR.muted}>{sf===0?"♮ 0":""+Math.abs(sf)+(isSharp?"♯":"♭")}</text>
-      </svg>
-    </div>
-  );
+function buildSynth(){
+  if(synth)synth.disconnect();
+  reverb=reverb||new Tone.Reverb({decay:1.2,wet:0.2}).toDestination();
+  synth=timbreEl.value==='piano'
+    ?new Tone.PolySynth(Tone.Synth,{oscillator:{type:'triangle'},envelope:{attack:0.005,decay:0.25,sustain:0.25,release:0.8},volume:-6}).connect(reverb)
+    :new Tone.PolySynth(Tone.Synth,{oscillator:{type:'sawtooth'},envelope:{attack:0.01,decay:0.1,sustain:0.5,release:0.3},volume:-10}).connect(reverb);
 }
+timbreEl.addEventListener('change',buildSynth);
 
-function Toggle({options,value,onChange}){
-  return (
-    <div style={{display:"flex",gap:3}}>
-      {options.map(o=>(
-        <button key={o.v} onClick={()=>onChange(o.v)} style={{
-          background:value===o.v?CLR.accent:CLR.surface,
-          border:"0.5px solid "+(value===o.v?CLR.accent:CLR.border),
-          color:value===o.v?"#fff":CLR.muted,borderRadius:6,
-          padding:"4px 10px",fontSize:12,cursor:"pointer",
-          fontWeight:value===o.v?600:400,whiteSpace:"nowrap"
-        }}>{o.label}</button>
-      ))}
-    </div>
-  );
-}
+// build flat event list from startMi/startSi
+function buildEvents(bps,vm,ps,startMi,startSi){
+  const evs=[];
+  let t=0;
+  // flatten all slots from start
+  const allSlots=[];
+  measures.forEach((m,mi)=>m.slots.forEach((sl,si)=>allSlots.push({mi,si,sl})));
+  const startIdx=allSlots.findIndex(x=>x.mi===startMi&&x.si===startSi);
+  const toPlay=startIdx>=0?allSlots.slice(startIdx):allSlots;
 
-export default function App(){
-  const [input,setInput]=useState("");
-  const [parsed,setParsed]=useState(null);
-  const [error,setError]=useState("");
-  const [displayMode,setDisplayMode]=useState("form");
-  const [toneMode,setToneMode]=useState("4");
+  toPlay.forEach(({mi,si,sl})=>{
+    const p=parseChord(sl.chord);
+    const midis=p?getVoiceMidis(p,vm):[];
+    const notes=midis.map(midiToNote);
+    const totalDur=sl.dur*bps;
 
-  const handleSubmit=()=>{
-    const p=parseInput(input);
-    if(!p){setError("キーが認識できません（例: C, Am, F#, Bbm）");return;}
-    setError(""); setParsed(p);
-  };
-
-  const data=useMemo(()=>{
-    if(!parsed) return null;
-    const {majSemi,minSemi,displayMaj,displayMin,isFlat}=parsed;
-    return {
-      majSemi,minSemi,displayMaj,displayMin,isFlat,
-      majScale:scaleOf(majSemi,MAJOR_SCALE),
-      natMinor:scaleOf(minSemi,NAT_MINOR),
-      harmMinor:scaleOf(minSemi,HARM_MINOR),
-      melodMinor:scaleOf(minSemi,MELOD_MINOR),
-      chords:buildChords(majSemi,toneMode),
-    };
-  },[parsed,toneMode]);
-
-  const chords=data?.chords??[];
-  const scaleNames=data?[
-    data.displayMaj+" メジャー",
-    data.displayMin+" ナチュラルマイナー",
-    data.displayMin+" ハーモニックマイナー",
-    data.displayMin+" メロディックマイナー",
-  ]:["メジャー","ナチュラルマイナー","ハーモニックマイナー","メロディックマイナー"];
-  const scaleNotes=[data?.majScale,data?.natMinor,data?.harmMinor,data?.melodMinor];
-  const scaleRoots=[data?.majSemi,data?.minSemi,data?.minSemi,data?.minSemi];
-
-  // 12セルグリッド: 左列(0-3)=コード1-4, 中列(4-7)=コード5-7+空, 右列(8-11)=スケール4段
-  const cells = Array.from({length:12},(_,idx)=>{
-    const col=idx%3, row=Math.floor(idx/3);
-    if(col===0){
-      // コード1-4
-      const c=chords[row];
-      if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
-      return <EmptyCard key={idx} label={ROMAN[row]}/>;
+    if(!notes.length){
+      evs.push({mi,si,notes:[],midis:[],time:t,dur:totalDur,isFirst:true,lit:[]});
+      t+=totalDur; return;
     }
-    if(col===1){
-      // コード5-7 (row0-2) + 空(row3)
-      if(row<3){
-        const c=chords[4+row];
-        if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
-        return <EmptyCard key={idx} label={ROMAN[4+row]}/>;
+
+    if(ps==='simple'){
+      evs.push({mi,si,notes,midis,time:t,dur:totalDur*0.92,isFirst:true,lit:midis});
+      t+=totalDur;
+    } else if(ps==='backing'){
+      for(let b=0;b<sl.dur;b++){
+        evs.push({mi,si,notes,midis,time:t,dur:bps*0.7,isFirst:b===0,lit:midis});
+        t+=bps;
       }
-      return <BlankCard key={idx}/>;
+    } else {
+      // arpeggio: sl.dur notes total, cycling through seq
+      const sorted=[...midis].sort((a,b)=>a-b);
+      let seq;
+      if(ps==='arp-up') seq=sorted;
+      else if(ps==='arp-down') seq=[...sorted].reverse();
+      else if(ps==='arp-ud'){
+        const up=sorted, down=[...sorted].reverse().slice(1,sorted.length-1);
+        seq=[...up,...down];
+      } else if(ps==='arp-du'){
+        const down=[...sorted].reverse(), up=sorted.slice(1,sorted.length-1);
+        seq=[...down,...up];
+      } else {
+        seq=[...midis].sort(()=>Math.random()-0.5);
+      }
+      if(!seq.length) seq=midis;
+      const noteDur=bps; // 1 note per beat
+      for(let b=0;b<sl.dur;b++){
+        const midi=seq[b%seq.length];
+        const note=midiToNote(midi);
+        evs.push({mi,si,notes:[note],midis:[midi],time:t,dur:noteDur*0.75,isFirst:b===0,lit:[midi]});
+        t+=noteDur;
+      }
     }
-    // col===2: スケール
-    if(data){
-      return <ScaleCard key={idx} label={scaleNames[row]} notes={scaleNotes[row]} root={scaleRoots[row]} displayMode={displayMode}/>;
+  });
+  return evs;
+}
+
+// selection
+function setSelected(mi,si){
+  selectedMi=mi; selectedSi=si;
+  document.querySelectorAll('.cblock.selected').forEach(e=>e.classList.remove('selected'));
+  document.getElementById(`b${mi}_${si}`)?.classList.add('selected');
+}
+
+// render
+const COLS=4;
+function render(){
+  scoreEl.innerHTML='';
+  const mb=maxB();
+  for(let r=0;r<Math.ceil(measures.length/COLS);r++){
+    const row=document.createElement('div'); row.className='score-row';
+    for(let c=0;c<COLS;c++){
+      const mi=r*COLS+c;
+      if(mi>=measures.length) break;
+      row.appendChild(renderMeasure(mi,mb));
     }
-    return (
-      <div key={idx} style={{...CARD_STYLE}}>
-        <div style={CARD_HEADER}><span style={{fontSize:11,color:CLR.muted}}>{scaleNames[row]}</span></div>
-        <PianoKeyboard highlightMap={{}} octaves={2}/>
-      </div>
-    );
+    scoreEl.appendChild(row);
+  }
+  // restore selection highlight
+  document.getElementById(`b${selectedMi}_${selectedSi}`)?.classList.add('selected');
+}
+
+function maxB(){return Math.max(2,Math.min(16,parseInt(maxbeatsEl.value)||4));}
+function usedB(mi){return measures[mi].slots.reduce((s,x)=>s+x.dur,0);}
+
+function renderMeasure(mi,mb){
+  const wrap=document.createElement('div'); wrap.className='mwrap';
+  const lbl=document.createElement('div'); lbl.className='mlbl';
+  const ls=document.createElement('span'); ls.textContent=`Bar ${mi+1}`; lbl.appendChild(ls);
+  if(measures.length>1){
+    const db=document.createElement('button'); db.className='del-meas'; db.textContent='Del';
+    db.onclick=()=>{
+      measures.splice(mi,1);
+      if(selectedMi>=measures.length){selectedMi=measures.length-1;selectedSi=0;}
+      render();
+    };
+    lbl.appendChild(db);
+  }
+  wrap.appendChild(lbl);
+  const meas=document.createElement('div'); meas.className='measure'; meas.id=`m${mi}`; wrap.appendChild(meas);
+  for(let b=1;b<mb;b++){const gl=document.createElement('div');gl.className='gline';gl.style.left=`${(b/mb)*100}%`;meas.appendChild(gl);}
+  measures[mi].slots.forEach((_,si)=>meas.appendChild(makeBlock(mi,si,mb,meas)));
+  refreshAddBtn(mi,mb,meas);
+  return wrap;
+}
+
+function slotLeft(mi,si){return measures[mi].slots.slice(0,si).reduce((s,x)=>s+x.dur,0);}
+
+function makeBlock(mi,si,mb,measEl){
+  const slot=measures[mi].slots[si];
+  const lb=slotLeft(mi,si);
+  const blk=document.createElement('div');
+  blk.className='cblock'; blk.id=`b${mi}_${si}`;
+  blk.style.left=`${(lb/mb)*100}%`;
+  blk.style.width=`calc(${(slot.dur/mb)*100}% - 3px)`;
+
+  // start marker
+  const sm=document.createElement('div');
+  sm.className='start-marker'; sm.textContent='▶ start'; blk.appendChild(sm);
+
+  const inner=document.createElement('div'); inner.className='cinner';
+  const inp=document.createElement('input');
+  inp.type='text'; inp.className='cinp'; inp.placeholder='C'; inp.value=slot.chord||'';
+  inp.addEventListener('input',e=>{
+    measures[mi].slots[si].chord=e.target.value;
+    blk.classList.toggle('err',e.target.value.trim()!==''&&!parseChord(e.target.value));
+  });
+  // click on input shouldn't select block (let focus happen)
+  inp.addEventListener('mousedown',e=>e.stopPropagation());
+
+  const dl=document.createElement('div'); dl.className='dlbl'; dl.id=`dl${mi}_${si}`; dl.textContent=`${slot.dur}`;
+  inner.appendChild(inp); inner.appendChild(dl); blk.appendChild(inner);
+
+  // click block to select start point
+  blk.addEventListener('mousedown',e=>{
+    if(e.target===inp) return;
+    setSelected(mi,si);
   });
 
-  return (
-    <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"var(--font-sans)",color:CLR.text,boxSizing:"border-box"}}>
+  if(measures[mi].slots.length>1){
+    const del=document.createElement('button'); del.className='cdel'; del.innerHTML='×';
+    del.addEventListener('mousedown',e=>e.stopPropagation());
+    del.onclick=()=>{
+      measures[mi].slots.splice(si,1);
+      if(selectedMi===mi&&selectedSi>=measures[mi].slots.length) selectedSi=Math.max(0,measures[mi].slots.length-1);
+      render();
+    };
+    blk.appendChild(del);
+  }
 
-      {/* ── 上エリア: ヘッダー ── */}
-      <div style={{marginBottom:"0.75rem"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-          <span style={{fontSize:13,fontWeight:700,color:CLR.text,letterSpacing:1,whiteSpace:"nowrap"}}>PIANO GUIDE</span>
-          <div style={{display:"flex",gap:5,flex:1,minWidth:160}}>
-            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-              placeholder="キー（例: C, Am, F#, Bbm）"
-              style={{flex:1,background:CLR.surface,border:"0.5px solid "+CLR.border,color:CLR.text,borderRadius:6,padding:"5px 9px",fontSize:12,outline:"none"}}/>
-            <button onClick={handleSubmit} style={{background:CLR.accent,border:"none",color:"#fff",borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>表示</button>
-          </div>
-          <Toggle options={[{v:"3",label:"3和音"},{v:"4",label:"4和音"},{v:"tension",label:"テンション"}]} value={toneMode} onChange={setToneMode}/>
-          <Toggle options={[{v:"form",label:"フォーム"},{v:"all",label:"全域"}]} value={displayMode} onChange={setDisplayMode}/>
-        </div>
-        {error&&<div style={{fontSize:11,color:CLR.red,marginBottom:4}}>{error}</div>}
-        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-          {data
-            ?<>
-              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
-                <span style={{fontSize:10,color:CLR.muted}}>KEY </span>
-                <span style={{fontSize:14,fontWeight:700,color:CLR.green}}>{data.displayMaj} major</span>
-              </div>
-              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
-                <span style={{fontSize:10,color:CLR.muted}}>並行短調 </span>
-                <span style={{fontSize:14,fontWeight:700,color:CLR.accent}}>{data.displayMin}</span>
-              </div>
-            </>
-            :<div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
-              <span style={{fontSize:12,color:CLR.muted}}>— キーを入力してください —</span>
-            </div>
-          }
-        </div>
-      </div>
+  const rh=document.createElement('div'); rh.className='rhandle';
+  rh.innerHTML='<span class="rhandle-dots">⋮</span>'; blk.appendChild(rh);
 
-      {/* ── 中エリア: 3列×4行グリッド ── */}
-      <div style={{marginBottom:"1rem"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(4,auto)",gap:8}}>
-          {/* 列ラベル */}
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 1–4</div>
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 5–7</div>
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>SCALE</div>
-          {cells}
-        </div>
-      </div>
+  function doResize(dx){
+    const mw=measEl.getBoundingClientRect().width,ppb=mw/mb;
+    const sd=measures[mi].slots[si]._sd||slot.dur;
+    const delta=Math.round(dx/ppb);
+    const others=measures[mi].slots.reduce((s,x,i)=>i===si?s:s+x.dur,0);
+    const nd=Math.max(1,Math.min(mb-others,sd+delta));
+    if(nd===measures[mi].slots[si].dur) return;
+    measures[mi].slots[si].dur=nd;
+    blk.style.width=`calc(${(nd/mb)*100}% - 3px)`;
+    const d=document.getElementById(`dl${mi}_${si}`); if(d)d.textContent=`${nd}`;
+    refreshAddBtn(mi,mb,measEl);
+  }
+  rh.addEventListener('mousedown',e=>{
+    e.stopPropagation(); e.preventDefault();
+    const sx=e.clientX; measures[mi].slots[si]._sd=measures[mi].slots[si].dur;
+    const mm=ev=>doResize(ev.clientX-sx);
+    const mu=()=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);render();};
+    document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
+  });
+  rh.addEventListener('touchstart',e=>{
+    e.stopPropagation(); e.preventDefault();
+    const sx=e.touches[0].clientX; measures[mi].slots[si]._sd=measures[mi].slots[si].dur;
+    const mm=ev=>doResize(ev.touches[0].clientX-sx);
+    const mu=()=>{rh.removeEventListener('touchmove',mm);rh.removeEventListener('touchend',mu);render();};
+    rh.addEventListener('touchmove',mm,{passive:false}); rh.addEventListener('touchend',mu);
+  },{passive:false});
 
-      {/* ── 下エリア: サークル + 調号 ── */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,alignItems:"start"}}>
-        <div/>{/* 左空白 */}
-        <StaffKeySignature majSemi={data?.majSemi??0} isFlat={data?.isFlat??false}/>
-        <CircleOfFifths majSemi={data?.majSemi??-1} minSemi={data?.minSemi??-1}/>
-      </div>
-
-    </div>
-  );
+  return blk;
 }
+
+function refreshAddBtn(mi,mb,measEl){
+  let ab=measEl.querySelector('.add-beat');
+  const used=usedB(mi),free=mb-used;
+  if(free<=0){if(ab)ab.remove();return;}
+  if(!ab){ab=document.createElement('button');ab.className='add-beat';ab.innerHTML='+';measEl.appendChild(ab);}
+  ab.style.left=`${(used/mb)*100}%`;
+  ab.style.width=`calc(${(free/mb)*100}% - 3px)`;
+  ab.onclick=()=>{
+    const u=usedB(mi),f=maxB()-u; if(f<=0)return;
+    measures[mi].slots.push({chord:'',dur:f}); render();
+    setTimeout(()=>{const all=document.querySelectorAll(`#m${mi} .cinp`);if(all.length)all[all.length-1].focus();},30);
+  };
+}
+
+maxbeatsEl.addEventListener('change',()=>{
+  const mb=maxB(); measures.forEach(m=>m.slots.forEach(s=>{if(s.dur>mb)s.dur=1;})); render();
+});
+document.getElementById('add-meas').addEventListener('click',()=>{
+  measures.push({slots:[{chord:'',dur:maxB()}]}); render();
+});
+
+// playback
+function clearPlay(){
+  document.querySelectorAll('.cblock.playing').forEach(e=>e.classList.remove('playing'));
+  document.querySelectorAll('.cinp.playing,.dlbl.playing').forEach(e=>e.classList.remove('playing'));
+}
+
+function schedulePlay(startOffset){
+  const bps=60/(Math.max(20,Math.min(300,parseInt(bpmEl.value)||80)));
+  const vm=voicingEl.value, ps=styleEl.value;
+  const evs=buildEvents(bps,vm,ps,selectedMi,selectedSi);
+  if(!evs.length) return;
+  const total=evs[evs.length-1].time+evs[evs.length-1].dur;
+
+  evs.forEach(ev=>{
+    Tone.Transport.schedule(time=>{
+      if(ev.isFirst){
+        clearPlay();
+        const blk=document.getElementById(`b${ev.mi}_${ev.si}`);
+        blk?.classList.add('playing');
+        blk?.querySelector('.cinp')?.classList.add('playing');
+        blk?.querySelector('.dlbl')?.classList.add('playing');
+      }
+      Tone.getDraw().schedule(()=>litPiano(ev.lit||[]),time);
+      if(ev.notes.length) synth.triggerAttackRelease(ev.notes,ev.dur,time);
+    }, ev.time + startOffset);
+  });
+
+  if(loopOn){
+    Tone.Transport.schedule(()=>{
+      Tone.Transport.cancel(Tone.Transport.seconds);
+      schedulePlay(Tone.Transport.seconds);
+    }, total + startOffset - 0.02);
+  } else {
+    Tone.Transport.schedule(()=>stopPlay(), total + startOffset + 0.05);
+  }
+}
+
+async function startPlay(){
+  await Tone.start(); buildSynth();
+  Tone.Transport.bpm.value=Math.max(20,Math.min(300,parseInt(bpmEl.value)||80));
+  isPlaying=true; playBtn.classList.add('stop'); picon.className='ti ti-player-stop'; plbl.textContent='Stop';
+  Tone.Transport.cancel(); Tone.Transport.stop();
+  schedulePlay(0);
+  Tone.Transport.start();
+}
+
+function stopPlay(){
+  Tone.Transport.stop(); Tone.Transport.cancel();
+  if(synth)synth.releaseAll();
+  clearPlay(); litPiano([]);
+  isPlaying=false; playBtn.classList.remove('stop');
+  picon.className='ti ti-player-play'; plbl.textContent='Play';
+}
+playBtn.addEventListener('click',()=>isPlaying?stopPlay():startPlay());
+
+// save/load
+function getJson(){
+  return JSON.stringify({version:1,bpm:parseInt(bpmEl.value)||80,beatsPerMeasure:maxB(),timbre:timbreEl.value,voicing:voicingEl.value,style:styleEl.value,measures:measures.map(m=>({slots:m.slots.map(s=>({chord:s.chord,dur:s.dur}))}))},null,2);
+}
+const modal=document.getElementById('modal');
+document.getElementById('save-btn').addEventListener('click',()=>{document.getElementById('modal-json').value=getJson();modal.classList.add('open');});
+document.getElementById('modal-close').addEventListener('click',()=>modal.classList.remove('open'));
+modal.addEventListener('click',e=>{if(e.target===modal)modal.classList.remove('open');});
+document.getElementById('modal-copy').addEventListener('click',()=>{
+  navigator.clipboard.writeText(document.getElementById('modal-json').value).then(()=>{
+    const b=document.getElementById('modal-copy'); b.textContent='コピーしました!'; setTimeout(()=>b.textContent='コピー',1500);
+  });
+});
+document.getElementById('modal-load').addEventListener('click',()=>{
+  try{
+    const data=JSON.parse(document.getElementById('modal-json').value);
+    if(data.bpm)bpmEl.value=data.bpm;
+    if(data.beatsPerMeasure)maxbeatsEl.value=data.beatsPerMeasure;
+    if(data.timbre)timbreEl.value=data.timbre;
+    if(data.voicing)voicingEl.value=data.voicing;
+    if(data.style)styleEl.value=data.style;
+    if(data.measures)measures=data.measures.map(m=>({slots:m.slots.map(s=>({chord:s.chord||'',dur:s.dur||1}))}));
+    selectedMi=0; selectedSi=0;
+    render(); modal.classList.remove('open');
+  }catch(e){alert('JSONの形式が正しくありません');}
+});
+
+render();
+setTimeout(buildPiano,100);
+</script>
+</body>
+</html>
