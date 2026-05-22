@@ -1,0 +1,473 @@
+import { useState, useMemo } from "react";
+
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const ENHARMONIC = {"Db":"C#","Eb":"D#","Fb":"E","Gb":"F#","Ab":"G#","Bb":"A#","Cb":"B","E#":"F","B#":"C"};
+const MAJOR_SCALE  = [0,2,4,5,7,9,11];
+const NAT_MINOR    = [0,2,3,5,7,8,10];
+const HARM_MINOR   = [0,2,3,5,7,8,11];
+const MELOD_MINOR  = [0,2,3,5,7,9,11];
+
+const CHORD_3 = [
+  {i:[0,4,7],s:""},  {i:[0,3,7],s:"m"}, {i:[0,3,7],s:"m"},
+  {i:[0,4,7],s:""},  {i:[0,4,7],s:""},  {i:[0,3,7],s:"m"}, {i:[0,3,6],s:"dim"}
+];
+const CHORD_4 = [
+  {i:[0,4,7,11],s:"M7"}, {i:[0,3,7,10],s:"m7"}, {i:[0,3,7,10],s:"m7"},
+  {i:[0,4,7,11],s:"M7"}, {i:[0,4,7,10],s:"7"},  {i:[0,3,7,10],s:"m7"}, {i:[0,3,6,10],s:"m7b5"}
+];
+const TENSION_EXTRA = [
+  [14,17,21],[14,17,20],[14,17,20],[14,17,21],
+  [14,17,21],[14,17,20],[13,17,20]
+];
+const TENSION_SUFFIXES = ["M7(9/11/13)","m7(9/11/13)","m7(9/11/13)","M7(9/11/13)","7(9/11/13)","m7(9/11/13)","m7b5(9/11/b13)"];
+const ROMAN = ["I","II","III","IV","V","VI","VII"];
+
+const CIRCLE_DATA = [
+  {maj:"C",  min:"Am",  majSemi:0,  minSemi:9},
+  {maj:"G",  min:"Em",  majSemi:7,  minSemi:4},
+  {maj:"D",  min:"Bm",  majSemi:2,  minSemi:11},
+  {maj:"A",  min:"F#m", majSemi:9,  minSemi:6},
+  {maj:"E",  min:"C#m", majSemi:4,  minSemi:1},
+  {maj:"B",  min:"G#m", majSemi:11, minSemi:8},
+  {maj:"F#", min:"D#m", maj2:"Gb", min2:"Ebm", majSemi:6, minSemi:3},
+  {maj:"Db", min:"Bbm", majSemi:1,  minSemi:10},
+  {maj:"Ab", min:"Fm",  majSemi:8,  minSemi:5},
+  {maj:"Eb", min:"Cm",  majSemi:3,  minSemi:0},
+  {maj:"Bb", min:"Gm",  majSemi:10, minSemi:7},
+  {maj:"F",  min:"Dm",  majSemi:5,  minSemi:2},
+];
+
+const SF_SHARP = {0:0,7:1,2:2,9:3,4:4,11:5,6:6};
+const SF_FLAT  = {0:0,5:-1,10:-2,3:-3,8:-4,1:-5,6:-6};
+const FLAT_KEYS = new Set(["F","Bb","Eb","Ab","Db","Gb","Cb"]);
+
+const CLR = {
+  bg:"#0f1923", surface:"#162030", card:"#1a2535", border:"#263348",
+  text:"#e2e8f0", muted:"#7a93b4", accent:"#3b82f6", green:"#10b981",
+  amber:"#f59e0b", dim:"#0d1520", red:"#f87171", purple:"#a78bfa"
+};
+
+function isFlatInput(s){
+  const base=s.replace(/m$/i,"");
+  return FLAT_KEYS.has(base)||(base.endsWith("b")&&base.length>1);
+}
+function noteStrToSemi(s){
+  const norm=ENHARMONIC[s]??s;
+  return NOTE_NAMES.indexOf(norm);
+}
+function parseInput(raw){
+  const s=raw.trim().replace(/♭/g,"b").replace(/♯/g,"#");
+  const minMatch=s.match(/^([A-Ga-g][#b]?)\s*m(?:in)?$/i);
+  if(minMatch){
+    const minStr=minMatch[1][0].toUpperCase()+minMatch[1].slice(1);
+    const minSemi=noteStrToSemi(minStr);
+    if(minSemi<0) return null;
+    const cd=CIRCLE_DATA.find(d=>d.minSemi===minSemi);
+    if(!cd) return null;
+    const useFlat=isFlatInput(minStr)||(cd.min2&&minStr===cd.min2.replace(/m$/,""));
+    return {majSemi:cd.majSemi,minSemi:cd.minSemi,
+      displayMaj:useFlat&&cd.maj2?cd.maj2:cd.maj,
+      displayMin:useFlat&&cd.min2?cd.min2:cd.min,
+      isFlat:useFlat||FLAT_KEYS.has(cd.maj)};
+  }
+  const majStr=s[0].toUpperCase()+s.slice(1);
+  const majSemi=noteStrToSemi(majStr);
+  if(majSemi<0) return null;
+  const cd=CIRCLE_DATA.find(d=>d.majSemi===majSemi);
+  if(!cd) return null;
+  const useFlat=isFlatInput(majStr);
+  return {majSemi:cd.majSemi,minSemi:cd.minSemi,
+    displayMaj:useFlat&&cd.maj2?cd.maj2:cd.maj,
+    displayMin:useFlat&&cd.min2?cd.min2:cd.min,
+    isFlat:useFlat||FLAT_KEYS.has(cd.maj)};
+}
+function scaleOf(root,pat){return pat.map(i=>(root+i)%12);}
+function buildChords(root,toneMode){
+  const types=toneMode==="3"?CHORD_3:CHORD_4;
+  return types.map((ct,i)=>{
+    const r=(root+MAJOR_SCALE[i])%12;
+    let notes=ct.i.map(iv=>(r+iv)%12);
+    const name=NOTE_NAMES[r]+ct.s+(toneMode==="tension"?" "+TENSION_SUFFIXES[i]:"");
+    if(toneMode==="tension") notes=[...notes,...TENSION_EXTRA[i].map(iv=>(r+iv)%12)];
+    return {name,notes,degree:i+1,rootSemi:r};
+  });
+}
+
+// ── ピアノ鍵盤 ─────────────────────────────────────────
+const WHITE_SEMI=[0,2,4,5,7,9,11];
+const BLACK_WI=[0,1,3,4,5];
+const BLACK_SEMI_=[1,3,6,8,10];
+
+function dotClr(c){
+  if(c==="amber") return CLR.amber;
+  if(c==="purple") return CLR.purple;
+  return CLR.green;
+}
+
+function PianoKeyboard({highlightMap={}, absHighlight=null, octaves=2}){
+  const ww=20,wh=60,bw=12,bh=38,dotR=5;
+  const totalW=7*octaves*ww;
+  const whites=[],blacks=[];
+  for(let o=0;o<octaves;o++){
+    WHITE_SEMI.forEach((semi,wi)=>{
+      const ni=semi%12,ai=o*12+semi;
+      const hl=absHighlight?(absHighlight[ai]||null):(highlightMap[ni]||null);
+      whites.push({x:(o*7+wi)*ww,hl});
+    });
+    BLACK_WI.forEach((bp,bi)=>{
+      const ni=BLACK_SEMI_[bi],ai=o*12+BLACK_SEMI_[bi];
+      const hl=absHighlight?(absHighlight[ai]||null):(highlightMap[ni]||null);
+      blacks.push({x:(o*7+bp)*ww+ww-bw/2,hl});
+    });
+  }
+  return (
+    <svg width="100%" viewBox={"0 0 "+totalW+" "+(wh+4)} preserveAspectRatio="xMidYMid meet" style={{display:"block",width:"100%"}}>
+      {whites.map((k,i)=>{
+        const dc=k.hl?dotClr(k.hl.color):null;
+        return <g key={"w"+i}>
+          <rect x={whites[i].x+.5} y={.5} width={ww-1} height={wh} rx={2} fill="#e8edf2" stroke="#8899aa" strokeWidth={.5}/>
+          {k.hl&&<>
+            <circle cx={whites[i].x+ww/2} cy={wh-14} r={dotR+1} fill={dc+"4d"} stroke={dc} strokeWidth={1.5}/>
+            <text x={whites[i].x+ww/2} y={wh-14} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={700} fill={dc}>{k.hl.label}</text>
+          </>}
+        </g>;
+      })}
+      {blacks.map((k,i)=>{
+        const dc=k.hl?dotClr(k.hl.color):null;
+        return <g key={"b"+i}>
+          <rect x={blacks[i].x} y={.5} width={bw} height={bh} rx={2} fill="#1e2a38" stroke="#0a0f18" strokeWidth={.5}/>
+          {k.hl&&<>
+            <circle cx={blacks[i].x+bw/2} cy={bh-9} r={dotR} fill={dc+"4d"} stroke={dc} strokeWidth={1.5}/>
+            <text x={blacks[i].x+bw/2} y={bh-9} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontWeight={700} fill={dc}>{k.hl.label}</text>
+          </>}
+        </g>;
+      })}
+    </svg>
+  );
+}
+
+// ── ハイライトマップ ───────────────────────────────────
+function buildScaleAllMap(notes,root){
+  const m={};
+  notes.forEach((n,i)=>{m[n]={color:n===root?"amber":"green",label:String(i+1)};});
+  return m;
+}
+function buildScaleFormAbs(notes,root){
+  const m={};
+  let prev=root;
+  notes.forEach((n,i)=>{
+    if(i===0){m[root]={color:"amber",label:"1"};return;}
+    let diff=(n-notes[i-1]+12)%12; if(!diff) diff=12;
+    let abs=prev+diff; if(abs>=24) abs-=12;
+    m[abs]={color:"green",label:String(i+1)};
+    prev=abs;
+  });
+  let octRoot=root+12; if(octRoot<24) m[octRoot]={color:"amber",label:"8"};
+  return m;
+}
+function buildChordAllMap(notes,toneMode){
+  const m={};
+  const base=toneMode==="3"?notes.slice(0,3):notes.slice(0,4);
+  const tens=toneMode==="tension"?notes.slice(4):[];
+  const labels=["R","3","5","7"];
+  base.forEach((n,i)=>{if(!m[n]) m[n]={color:i===0?"amber":"green",label:labels[i]||""};});
+  tens.forEach((n,ti)=>{if(!m[n]) m[n]={color:"purple",label:["9","11","13"][ti]||""};});
+  return m;
+}
+function buildChordFormAbs(chord,toneMode){
+  const notes=chord.notes;
+  const base=toneMode==="3"?notes.slice(0,3):notes.slice(0,4);
+  const tens=toneMode==="tension"?notes.slice(4):[];
+  const labels=["R","3","5","7"];
+  const colors=["amber","green","green","green"];
+  const rootSemi=chord.rootSemi;
+  const m={};
+  base.forEach((semi,i)=>{
+    let fromRoot=(semi-rootSemi+12)%12;
+    let abs=rootSemi+fromRoot;
+    if(i>0){
+      const prevAbs=base.slice(0,i).reduce((pa,s)=>{
+        let a=rootSemi+(s-rootSemi+12)%12; while(a<=pa) a+=12; return a;
+      },rootSemi-1);
+      while(abs<=prevAbs) abs+=12;
+    }
+    if(abs>=24) abs-=12;
+    m[abs]={color:colors[i],label:labels[i]};
+  });
+  const lastAbs=Object.keys(m).map(Number).sort((a,b)=>a-b).pop()??rootSemi;
+  let prev=lastAbs;
+  tens.forEach((semi,ti)=>{
+    const fromRoot=(semi-rootSemi+12)%12;
+    let abs=rootSemi+fromRoot; while(abs<=prev) abs+=12;
+    if(abs>=24) abs-=12;
+    m[abs]={color:"purple",label:["9","11","13"][ti]||""};
+    prev=abs;
+  });
+  return m;
+}
+
+// ── カード共通スタイル ─────────────────────────────────
+const CARD_STYLE={background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"8px 8px 6px",boxSizing:"border-box"};
+const CARD_HEADER={display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,minHeight:20};
+
+function ChordCard({chord,displayMode,toneMode}){
+  const isForm=displayMode==="form";
+  const absHL=isForm?buildChordFormAbs(chord,toneMode):null;
+  const hlMap=isForm?{}:buildChordAllMap(chord.notes,toneMode);
+  return (
+    <div style={CARD_STYLE}>
+      <div style={CARD_HEADER}>
+        <span style={{fontSize:11,fontWeight:600,color:CLR.text}}>{chord.name}</span>
+        <span style={{fontSize:10,color:CLR.muted,background:CLR.surface,padding:"1px 6px",borderRadius:4}}>{ROMAN[chord.degree-1]}</span>
+      </div>
+      <PianoKeyboard highlightMap={hlMap} absHighlight={absHL} octaves={2}/>
+    </div>
+  );
+}
+function EmptyCard({label}){
+  return (
+    <div style={CARD_STYLE}>
+      <div style={CARD_HEADER}>
+        <span style={{fontSize:11,color:CLR.border}}>——</span>
+        <span style={{fontSize:10,color:CLR.border,background:CLR.surface,padding:"1px 6px",borderRadius:4}}>{label}</span>
+      </div>
+      <PianoKeyboard highlightMap={{}} octaves={2}/>
+    </div>
+  );
+}
+function ScaleCard({label,notes,root,displayMode}){
+  const isForm=displayMode==="form";
+  const absHL=isForm?buildScaleFormAbs(notes,root):null;
+  const hlMap=isForm?{}:buildScaleAllMap(notes,root);
+  return (
+    <div style={CARD_STYLE}>
+      <div style={CARD_HEADER}>
+        <span style={{fontSize:11,color:CLR.muted}}>{label}</span>
+      </div>
+      <PianoKeyboard highlightMap={hlMap} absHighlight={absHL} octaves={2}/>
+    </div>
+  );
+}
+function BlankCard(){
+  return <div style={{...CARD_STYLE,visibility:"hidden"}}><div style={CARD_HEADER}/><PianoKeyboard highlightMap={{}} octaves={2}/></div>;
+}
+
+// ── サークルオブフィフス ────────────────────────────────
+function CircleOfFifths({majSemi,minSemi}){
+  const cx=130,cy=130,outerR=118,innerR=76,coreR=40;
+  const majIdx=CIRCLE_DATA.findIndex(d=>d.majSemi===majSemi);
+  const minIdx=CIRCLE_DATA.findIndex(d=>d.minSemi===minSemi);
+  return (
+    <svg width="100%" viewBox="0 0 260 260" preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
+      {CIRCLE_DATA.map((cd,i)=>{
+        const a1=(i*30-90-15)*Math.PI/180,a2=(i*30-90+15)*Math.PI/180;
+        const p=(r,a)=>[cx+r*Math.cos(a),cy+r*Math.sin(a)];
+        const [ox1,oy1]=p(outerR,a1),[ox2,oy2]=p(outerR,a2);
+        const [ix1,iy1]=p(innerR,a1),[ix2,iy2]=p(innerR,a2);
+        const dO="M"+ox1+","+oy1+" A"+outerR+","+outerR+" 0 0,1 "+ox2+","+oy2+" L"+ix2+","+iy2+" A"+innerR+","+innerR+" 0 0,0 "+ix1+","+iy1+" Z";
+        const [mx1,my1]=p(innerR,a1),[mx2,my2]=p(innerR,a2);
+        const [cx1_,cy1_]=p(coreR,a1),[cx2_,cy2_]=p(coreR,a2);
+        const dI="M"+mx1+","+my1+" A"+innerR+","+innerR+" 0 0,1 "+mx2+","+my2+" L"+cx2_+","+cy2_+" A"+coreR+","+coreR+" 0 0,0 "+cx1_+","+cy1_+" Z";
+        const am=(i*30-90)*Math.PI/180;
+        const [tlx,tly]=p(97,am),[tix,tiy]=p(60,am);
+        const isMaj=i===majIdx,isMin=i===minIdx;
+        const isAdj=majIdx>=0&&(Math.abs(i-majIdx)===1||Math.abs(i-majIdx)===11);
+        const hasDual=!!cd.maj2;
+        return (
+          <g key={i}>
+            <path d={dO} fill={isMaj?"#10b981":isAdj?"#1e4d3a":CLR.surface} stroke={CLR.border} strokeWidth={.5}/>
+            {hasDual
+              ?<><text x={tlx} y={tly-5} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={isMaj?700:400} fill={isMaj?"#fff":CLR.text}>{cd.maj}</text>
+                 <text x={tlx} y={tly+6} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={isMaj?700:400} fill={isMaj?"#fff":CLR.muted}>/{cd.maj2}</text></>
+              :<text x={tlx} y={tly} textAnchor="middle" dominantBaseline="middle" fontSize={isMaj?13:11} fontWeight={isMaj?700:400} fill={isMaj?"#fff":isAdj?"#5ecba1":CLR.text}>{cd.maj}</text>
+            }
+            <path d={dI} fill={isMin?"#0d7a56":isMaj?"#0a6346":isAdj?"#1a3d30":CLR.dim} stroke={CLR.border} strokeWidth={.5}/>
+            {hasDual
+              ?<><text x={tix} y={tiy-4} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.text}>{cd.min}</text>
+                 <text x={tix} y={tiy+5} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.muted}>/{cd.min2}</text></>
+              :<text x={tix} y={tiy} textAnchor="middle" dominantBaseline="middle" fontSize={isMin?10:9} fontWeight={isMin?600:400} fill={isMin?"#9fe1cb":CLR.text}>{cd.min}</text>
+            }
+          </g>
+        );
+      })}
+      <circle cx={cx} cy={cy} r={coreR} fill={CLR.dim} stroke={CLR.border} strokeWidth={.5}/>
+      <text x={cx} y={cy-7} textAnchor="middle" fontSize={10} fill={CLR.muted}>Circle of</text>
+      <text x={cx} y={cy+7} textAnchor="middle" fontSize={10} fill={CLR.muted}>Fifths</text>
+    </svg>
+  );
+}
+
+// ── 調号（五線譜）──────────────────────────────────────
+function StaffKeySignature({majSemi,isFlat}){
+  let sf;
+  if(isFlat) sf=SF_FLAT[majSemi]??0;
+  else sf=SF_SHARP[majSemi]??SF_FLAT[majSemi]??0;
+  const isSharp=sf>0,count=Math.abs(sf);
+  const VW=200,VH=96;
+  const staffLeft=46,staffRight=VW-8;
+  const line1y=74,lineGap=10;
+  const lineY=(n)=>line1y-(n-1)*lineGap;
+  const betweenY=(lo,hi)=>(lineY(lo)+lineY(hi))/2;
+  const above5Y=lineY(5)-lineGap;
+  const flatOffset=-3;
+  const flatY=[lineY(3)+flatOffset,betweenY(4,5)+flatOffset,betweenY(2,3)+flatOffset,lineY(4)+flatOffset,lineY(2)+flatOffset,betweenY(3,4)+flatOffset];
+  const sharpY=[lineY(5),betweenY(3,4),above5Y,lineY(4),betweenY(2,3),betweenY(4,5),lineY(4)];
+  const accY=isSharp?sharpY.slice(0,count):flatY.slice(0,count);
+  const symColor=isSharp?CLR.green:CLR.accent;
+  return (
+    <div style={{background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"10px 12px",boxSizing:"border-box"}}>
+      <div style={{fontSize:10,color:CLR.muted,marginBottom:4}}>調号</div>
+      <svg width="100%" viewBox={"0 0 "+VW+" "+VH} preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
+        {[1,2,3,4,5].map(n=>(
+          <line key={n} x1={8} y1={lineY(n)} x2={staffRight} y2={lineY(n)} stroke={CLR.muted} strokeWidth={.8}/>
+        ))}
+        <text x={10} y={lineY(1)+(-4)} fontSize={57} fill={CLR.muted} fontFamily="serif" dominantBaseline="auto">𝄞</text>
+        {sf===0&&<text x={staffLeft+20} y={lineY(3)+5} textAnchor="middle" fontSize={16} fill={CLR.muted}>♮</text>}
+        {accY.map((y,i)=>(
+          <text key={i} x={staffLeft+4+i*17} y={y+6} textAnchor="middle" fontSize={17} fontWeight={700} fill={symColor}>{isSharp?"♯":"♭"}</text>
+        ))}
+        <text x={VW-4} y={VH-4} textAnchor="end" fontSize={9} fill={CLR.muted}>{sf===0?"♮ 0":""+Math.abs(sf)+(isSharp?"♯":"♭")}</text>
+      </svg>
+    </div>
+  );
+}
+
+function Toggle({options,value,onChange}){
+  return (
+    <div style={{display:"flex",gap:3}}>
+      {options.map(o=>(
+        <button key={o.v} onClick={()=>onChange(o.v)} style={{
+          background:value===o.v?CLR.accent:CLR.surface,
+          border:"0.5px solid "+(value===o.v?CLR.accent:CLR.border),
+          color:value===o.v?"#fff":CLR.muted,borderRadius:6,
+          padding:"4px 10px",fontSize:12,cursor:"pointer",
+          fontWeight:value===o.v?600:400,whiteSpace:"nowrap"
+        }}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+export default function App(){
+  const [input,setInput]=useState("");
+  const [parsed,setParsed]=useState(null);
+  const [error,setError]=useState("");
+  const [displayMode,setDisplayMode]=useState("form");
+  const [toneMode,setToneMode]=useState("4");
+
+  const handleSubmit=()=>{
+    const p=parseInput(input);
+    if(!p){setError("キーが認識できません（例: C, Am, F#, Bbm）");return;}
+    setError(""); setParsed(p);
+  };
+
+  const data=useMemo(()=>{
+    if(!parsed) return null;
+    const {majSemi,minSemi,displayMaj,displayMin,isFlat}=parsed;
+    return {
+      majSemi,minSemi,displayMaj,displayMin,isFlat,
+      majScale:scaleOf(majSemi,MAJOR_SCALE),
+      natMinor:scaleOf(minSemi,NAT_MINOR),
+      harmMinor:scaleOf(minSemi,HARM_MINOR),
+      melodMinor:scaleOf(minSemi,MELOD_MINOR),
+      chords:buildChords(majSemi,toneMode),
+    };
+  },[parsed,toneMode]);
+
+  const chords=data?.chords??[];
+  const scaleNames=data?[
+    data.displayMaj+" メジャー",
+    data.displayMin+" ナチュラルマイナー",
+    data.displayMin+" ハーモニックマイナー",
+    data.displayMin+" メロディックマイナー",
+  ]:["メジャー","ナチュラルマイナー","ハーモニックマイナー","メロディックマイナー"];
+  const scaleNotes=[data?.majScale,data?.natMinor,data?.harmMinor,data?.melodMinor];
+  const scaleRoots=[data?.majSemi,data?.minSemi,data?.minSemi,data?.minSemi];
+
+  // 12セルグリッド: 左列(0-3)=コード1-4, 中列(4-7)=コード5-7+空, 右列(8-11)=スケール4段
+  const cells = Array.from({length:12},(_,idx)=>{
+    const col=idx%3, row=Math.floor(idx/3);
+    if(col===0){
+      // コード1-4
+      const c=chords[row];
+      if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
+      return <EmptyCard key={idx} label={ROMAN[row]}/>;
+    }
+    if(col===1){
+      // コード5-7 (row0-2) + 空(row3)
+      if(row<3){
+        const c=chords[4+row];
+        if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
+        return <EmptyCard key={idx} label={ROMAN[4+row]}/>;
+      }
+      return <BlankCard key={idx}/>;
+    }
+    // col===2: スケール
+    if(data){
+      return <ScaleCard key={idx} label={scaleNames[row]} notes={scaleNotes[row]} root={scaleRoots[row]} displayMode={displayMode}/>;
+    }
+    return (
+      <div key={idx} style={{...CARD_STYLE}}>
+        <div style={CARD_HEADER}><span style={{fontSize:11,color:CLR.muted}}>{scaleNames[row]}</span></div>
+        <PianoKeyboard highlightMap={{}} octaves={2}/>
+      </div>
+    );
+  });
+
+  return (
+    <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"var(--font-sans)",color:CLR.text,boxSizing:"border-box"}}>
+
+      {/* ── 上エリア: ヘッダー ── */}
+      <div style={{marginBottom:"0.75rem"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+          <span style={{fontSize:13,fontWeight:700,color:CLR.text,letterSpacing:1,whiteSpace:"nowrap"}}>PIANO GUIDE</span>
+          <div style={{display:"flex",gap:5,flex:1,minWidth:160}}>
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+              placeholder="キー（例: C, Am, F#, Bbm）"
+              style={{flex:1,background:CLR.surface,border:"0.5px solid "+CLR.border,color:CLR.text,borderRadius:6,padding:"5px 9px",fontSize:12,outline:"none"}}/>
+            <button onClick={handleSubmit} style={{background:CLR.accent,border:"none",color:"#fff",borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>表示</button>
+          </div>
+          <Toggle options={[{v:"3",label:"3和音"},{v:"4",label:"4和音"},{v:"tension",label:"テンション"}]} value={toneMode} onChange={setToneMode}/>
+          <Toggle options={[{v:"form",label:"フォーム"},{v:"all",label:"全域"}]} value={displayMode} onChange={setDisplayMode}/>
+        </div>
+        {error&&<div style={{fontSize:11,color:CLR.red,marginBottom:4}}>{error}</div>}
+        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+          {data
+            ?<>
+              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
+                <span style={{fontSize:10,color:CLR.muted}}>KEY </span>
+                <span style={{fontSize:14,fontWeight:700,color:CLR.green}}>{data.displayMaj} major</span>
+              </div>
+              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
+                <span style={{fontSize:10,color:CLR.muted}}>並行短調 </span>
+                <span style={{fontSize:14,fontWeight:700,color:CLR.accent}}>{data.displayMin}</span>
+              </div>
+            </>
+            :<div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
+              <span style={{fontSize:12,color:CLR.muted}}>— キーを入力してください —</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      {/* ── 中エリア: 3列×4行グリッド ── */}
+      <div style={{marginBottom:"1rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(4,auto)",gap:8}}>
+          {/* 列ラベル */}
+          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 1–4</div>
+          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 5–7</div>
+          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>SCALE</div>
+          {cells}
+        </div>
+      </div>
+
+      {/* ── 下エリア: サークル + 調号 ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,alignItems:"start"}}>
+        <div/>{/* 左空白 */}
+        <StaffKeySignature majSemi={data?.majSemi??0} isFlat={data?.isFlat??false}/>
+        <CircleOfFifths majSemi={data?.majSemi??-1} minSemi={data?.minSemi??-1}/>
+      </div>
+
+    </div>
+  );
+}
