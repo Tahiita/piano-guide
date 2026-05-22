@@ -1,4 +1,22 @@
-import { useState, useMemo } from "react";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Piano Guide</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0f1923;font-family:system-ui,sans-serif;}
+    input,button{font-family:inherit;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const ENHARMONIC = {"Db":"C#","Eb":"D#","Fb":"E","Gb":"F#","Ab":"G#","Bb":"A#","Cb":"B","E#":"F","B#":"C"};
@@ -52,7 +70,7 @@ function isFlatInput(s){
   return FLAT_KEYS.has(base)||(base.endsWith("b")&&base.length>1);
 }
 function noteStrToSemi(s){
-  const norm=ENHARMONIC[s]??s;
+  const norm=ENHARMONIC[s]||s;
   return NOTE_NAMES.indexOf(norm);
 }
 function parseInput(raw){
@@ -93,7 +111,6 @@ function buildChords(root,toneMode){
   });
 }
 
-// ── ピアノ鍵盤 ─────────────────────────────────────────
 const WHITE_SEMI=[0,2,4,5,7,9,11];
 const BLACK_WI=[0,1,3,4,5];
 const BLACK_SEMI_=[1,3,6,8,10];
@@ -146,7 +163,6 @@ function PianoKeyboard({highlightMap={}, absHighlight=null, octaves=2}){
   );
 }
 
-// ── ハイライトマップ ───────────────────────────────────
 function buildScaleAllMap(notes,root){
   const m={};
   notes.forEach((n,i)=>{m[n]={color:n===root?"amber":"green",label:String(i+1)};});
@@ -194,7 +210,7 @@ function buildChordFormAbs(chord,toneMode){
     if(abs>=24) abs-=12;
     m[abs]={color:colors[i],label:labels[i]};
   });
-  const lastAbs=Object.keys(m).map(Number).sort((a,b)=>a-b).pop()??rootSemi;
+  const lastAbs=Object.keys(m).map(Number).sort((a,b)=>a-b).pop()||rootSemi;
   let prev=lastAbs;
   tens.forEach((semi,ti)=>{
     const fromRoot=(semi-rootSemi+12)%12;
@@ -206,7 +222,6 @@ function buildChordFormAbs(chord,toneMode){
   return m;
 }
 
-// ── カード共通スタイル ─────────────────────────────────
 const CARD_STYLE={background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"8px 8px 6px",boxSizing:"border-box"};
 const CARD_HEADER={display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,minHeight:20};
 
@@ -252,7 +267,6 @@ function BlankCard(){
   return <div style={{...CARD_STYLE,visibility:"hidden"}}><div style={CARD_HEADER}/><PianoKeyboard highlightMap={{}} octaves={2}/></div>;
 }
 
-// ── サークルオブフィフス ────────────────────────────────
 function CircleOfFifths({majSemi,minSemi}){
   const cx=130,cy=130,outerR=118,innerR=76,coreR=40;
   const majIdx=CIRCLE_DATA.findIndex(d=>d.majSemi===majSemi);
@@ -297,11 +311,10 @@ function CircleOfFifths({majSemi,minSemi}){
   );
 }
 
-// ── 調号（五線譜）──────────────────────────────────────
 function StaffKeySignature({majSemi,isFlat}){
   let sf;
-  if(isFlat) sf=SF_FLAT[majSemi]??0;
-  else sf=SF_SHARP[majSemi]??SF_FLAT[majSemi]??0;
+  if(isFlat) sf=SF_FLAT[majSemi]||0;
+  else sf=SF_SHARP[majSemi]!==undefined?SF_SHARP[majSemi]:(SF_FLAT[majSemi]||0);
   const isSharp=sf>0,count=Math.abs(sf);
   const VW=200,VH=96;
   const staffLeft=46,staffRight=VW-8;
@@ -348,7 +361,7 @@ function Toggle({options,value,onChange}){
   );
 }
 
-export default function App(){
+function App(){
   const [input,setInput]=useState("");
   const [parsed,setParsed]=useState(null);
   const [error,setError]=useState("");
@@ -374,27 +387,24 @@ export default function App(){
     };
   },[parsed,toneMode]);
 
-  const chords=data?.chords??[];
+  const chords=data?data.chords:[];
   const scaleNames=data?[
     data.displayMaj+" メジャー",
     data.displayMin+" ナチュラルマイナー",
     data.displayMin+" ハーモニックマイナー",
     data.displayMin+" メロディックマイナー",
   ]:["メジャー","ナチュラルマイナー","ハーモニックマイナー","メロディックマイナー"];
-  const scaleNotes=[data?.majScale,data?.natMinor,data?.harmMinor,data?.melodMinor];
-  const scaleRoots=[data?.majSemi,data?.minSemi,data?.minSemi,data?.minSemi];
+  const scaleNotes=[data?data.majScale:null,data?data.natMinor:null,data?data.harmMinor:null,data?data.melodMinor:null];
+  const scaleRoots=[data?data.majSemi:null,data?data.minSemi:null,data?data.minSemi:null,data?data.minSemi:null];
 
-  // 12セルグリッド: 左列(0-3)=コード1-4, 中列(4-7)=コード5-7+空, 右列(8-11)=スケール4段
   const cells = Array.from({length:12},(_,idx)=>{
     const col=idx%3, row=Math.floor(idx/3);
     if(col===0){
-      // コード1-4
       const c=chords[row];
       if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
       return <EmptyCard key={idx} label={ROMAN[row]}/>;
     }
     if(col===1){
-      // コード5-7 (row0-2) + 空(row3)
       if(row<3){
         const c=chords[4+row];
         if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
@@ -402,7 +412,6 @@ export default function App(){
       }
       return <BlankCard key={idx}/>;
     }
-    // col===2: スケール
     if(data){
       return <ScaleCard key={idx} label={scaleNames[row]} notes={scaleNotes[row]} root={scaleRoots[row]} displayMode={displayMode}/>;
     }
@@ -415,9 +424,7 @@ export default function App(){
   });
 
   return (
-    <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"var(--font-sans)",color:CLR.text,boxSizing:"border-box"}}>
-
-      {/* ── 上エリア: ヘッダー ── */}
+    <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"system-ui,sans-serif",color:CLR.text,boxSizing:"border-box"}}>
       <div style={{marginBottom:"0.75rem"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
           <span style={{fontSize:13,fontWeight:700,color:CLR.text,letterSpacing:1,whiteSpace:"nowrap"}}>PIANO GUIDE</span>
@@ -450,10 +457,8 @@ export default function App(){
         </div>
       </div>
 
-      {/* ── 中エリア: 3列×4行グリッド ── */}
       <div style={{marginBottom:"1rem"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(4,auto)",gap:8}}>
-          {/* 列ラベル */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
           <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 1–4</div>
           <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 5–7</div>
           <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>SCALE</div>
@@ -461,13 +466,16 @@ export default function App(){
         </div>
       </div>
 
-      {/* ── 下エリア: サークル + 調号 ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,alignItems:"start"}}>
-        <div/>{/* 左空白 */}
-        <StaffKeySignature majSemi={data?.majSemi??0} isFlat={data?.isFlat??false}/>
-        <CircleOfFifths majSemi={data?.majSemi??-1} minSemi={data?.minSemi??-1}/>
+        <div/>
+        <StaffKeySignature majSemi={data?data.majSemi:0} isFlat={data?data.isFlat:false}/>
+        <CircleOfFifths majSemi={data?data.majSemi:-1} minSemi={data?data.minSemi:-1}/>
       </div>
-
     </div>
   );
 }
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
