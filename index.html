@@ -39,6 +39,7 @@ const TENSION_EXTRA = [
 ];
 const TENSION_SUFFIXES = ["M7(9/11/13)","m7(9/11/13)","m7(9/11/13)","M7(9/11/13)","7(9/11/13)","m7(9/11/13)","m7b5(9/11/b13)"];
 const ROMAN = ["I","II","III","IV","V","VI","VII"];
+const TENSION_FORM_OFFSETS = [2,5,9];
 
 const CIRCLE_DATA = [
   {maj:"C",  min:"Am",  majSemi:0,  minSemi:9},
@@ -121,7 +122,7 @@ function dotClr(c){
   return CLR.green;
 }
 
-function PianoKeyboard({highlightMap={}, absHighlight=null, octaves=2}){
+function PianoKeyboard({highlightMap={},absHighlight=null,octaves=2}){
   const ww=20,wh=60,bw=12,bh=38,dotR=5;
   const totalW=7*octaves*ww;
   const whites=[],blacks=[];
@@ -210,15 +211,15 @@ function buildChordFormAbs(chord,toneMode){
     if(abs>=24) abs-=12;
     m[abs]={color:colors[i],label:labels[i]};
   });
-  const lastAbs=Object.keys(m).map(Number).sort((a,b)=>a-b).pop()||rootSemi;
-  let prev=lastAbs;
-  tens.forEach((semi,ti)=>{
-    const fromRoot=(semi-rootSemi+12)%12;
-    let abs=rootSemi+fromRoot; while(abs<=prev) abs+=12;
-    if(abs>=24) abs-=12;
-    m[abs]={color:"purple",label:["9","11","13"][ti]||""};
-    prev=abs;
-  });
+  if(toneMode==="tension"){
+    tens.forEach((_,ti)=>{
+      const offset=TENSION_FORM_OFFSETS[ti];
+      if(offset===undefined) return;
+      let abs=rootSemi+offset;
+      if(abs>=24) abs-=12;
+      if(!m[abs]) m[abs]={color:"purple",label:["9","11","13"][ti]||""};
+    });
+  }
   return m;
 }
 
@@ -262,9 +263,6 @@ function ScaleCard({label,notes,root,displayMode}){
       <PianoKeyboard highlightMap={hlMap} absHighlight={absHL} octaves={2}/>
     </div>
   );
-}
-function BlankCard(){
-  return <div style={{...CARD_STYLE,visibility:"hidden"}}><div style={CARD_HEADER}/><PianoKeyboard highlightMap={{}} octaves={2}/></div>;
 }
 
 function CircleOfFifths({majSemi,minSemi}){
@@ -316,26 +314,29 @@ function StaffKeySignature({majSemi,isFlat}){
   if(isFlat) sf=SF_FLAT[majSemi]||0;
   else sf=SF_SHARP[majSemi]!==undefined?SF_SHARP[majSemi]:(SF_FLAT[majSemi]||0);
   const isSharp=sf>0,count=Math.abs(sf);
-  const VW=200,VH=96;
+  const VW=200,VH=70;
   const staffLeft=46,staffRight=VW-8;
-  const line1y=74,lineGap=10;
+  const line1y=54,lineGap=10;
   const lineY=(n)=>line1y-(n-1)*lineGap;
   const betweenY=(lo,hi)=>(lineY(lo)+lineY(hi))/2;
   const above5Y=lineY(5)-lineGap;
-  const flatOffset=-3;
-  const flatY=[lineY(3)+flatOffset,betweenY(4,5)+flatOffset,betweenY(2,3)+flatOffset,lineY(4)+flatOffset,lineY(2)+flatOffset,betweenY(3,4)+flatOffset];
+  const flatOffset=-1;
+  const flatY=[
+    lineY(3)+flatOffset,betweenY(4,5)+flatOffset,betweenY(2,3)+flatOffset,
+    lineY(4)+flatOffset,lineY(2)+flatOffset,betweenY(3,4)+flatOffset
+  ];
   const sharpY=[lineY(5),betweenY(3,4),above5Y,lineY(4),betweenY(2,3),betweenY(4,5),lineY(4)];
   const accY=isSharp?sharpY.slice(0,count):flatY.slice(0,count);
   const symColor=isSharp?CLR.green:CLR.accent;
   return (
-    <div style={{background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"10px 12px",boxSizing:"border-box"}}>
-      <div style={{fontSize:10,color:CLR.muted,marginBottom:4}}>調号</div>
+    <div style={{background:CLR.card,border:"0.5px solid "+CLR.border,borderRadius:8,padding:"6px 12px 4px",boxSizing:"border-box"}}>
+      <div style={{fontSize:10,color:CLR.muted,marginBottom:0}}>調号</div>
       <svg width="100%" viewBox={"0 0 "+VW+" "+VH} preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
         {[1,2,3,4,5].map(n=>(
           <line key={n} x1={8} y1={lineY(n)} x2={staffRight} y2={lineY(n)} stroke={CLR.muted} strokeWidth={.8}/>
         ))}
         <text x={10} y={lineY(1)+(-4)} fontSize={57} fill={CLR.muted} fontFamily="serif" dominantBaseline="auto">𝄞</text>
-        {sf===0&&<text x={staffLeft+20} y={lineY(3)+5} textAnchor="middle" fontSize={16} fill={CLR.muted}>♮</text>}
+        {sf===0&&<text x={staffLeft+20} y={lineY(3)+3} textAnchor="middle" fontSize={21} fill={CLR.muted}>♮</text>}
         {accY.map((y,i)=>(
           <text key={i} x={staffLeft+4+i*17} y={y+6} textAnchor="middle" fontSize={17} fontWeight={700} fill={symColor}>{isSharp?"♯":"♭"}</text>
         ))}
@@ -397,31 +398,36 @@ function App(){
   const scaleNotes=[data?data.majScale:null,data?data.natMinor:null,data?data.harmMinor:null,data?data.melodMinor:null];
   const scaleRoots=[data?data.majSemi:null,data?data.minSemi:null,data?data.minSemi:null,data?data.minSemi:null];
 
-  const cells = Array.from({length:12},(_,idx)=>{
-    const col=idx%3, row=Math.floor(idx/3);
-    if(col===0){
-      const c=chords[row];
-      if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
-      return <EmptyCard key={idx} label={ROMAN[row]}/>;
-    }
-    if(col===1){
-      if(row<3){
+  const leftCol = (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {[0,1,2,3].map(row=>{
+        if(data) return <ScaleCard key={row} label={scaleNames[row]} notes={scaleNotes[row]} root={scaleRoots[row]} displayMode={displayMode}/>;
+        return <div key={row} style={CARD_STYLE}><div style={CARD_HEADER}><span style={{fontSize:11,color:CLR.muted}}>{scaleNames[row]}</span></div><PianoKeyboard highlightMap={{}} octaves={2}/></div>;
+      })}
+    </div>
+  );
+
+  const midCol = (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {[0,1,2,3].map(row=>{
+        const c=chords[row];
+        if(c) return <ChordCard key={row} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
+        return <EmptyCard key={row} label={ROMAN[row]}/>;
+      })}
+      <StaffKeySignature majSemi={data?data.majSemi:0} isFlat={data?data.isFlat:false}/>
+    </div>
+  );
+
+  const rightCol = (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {[0,1,2].map(row=>{
         const c=chords[4+row];
-        if(c) return <ChordCard key={idx} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
-        return <EmptyCard key={idx} label={ROMAN[4+row]}/>;
-      }
-      return <BlankCard key={idx}/>;
-    }
-    if(data){
-      return <ScaleCard key={idx} label={scaleNames[row]} notes={scaleNotes[row]} root={scaleRoots[row]} displayMode={displayMode}/>;
-    }
-    return (
-      <div key={idx} style={{...CARD_STYLE}}>
-        <div style={CARD_HEADER}><span style={{fontSize:11,color:CLR.muted}}>{scaleNames[row]}</span></div>
-        <PianoKeyboard highlightMap={{}} octaves={2}/>
-      </div>
-    );
-  });
+        if(c) return <ChordCard key={row} chord={c} displayMode={displayMode} toneMode={toneMode}/>;
+        return <EmptyCard key={row} label={ROMAN[4+row]}/>;
+      })}
+      <CircleOfFifths majSemi={data?data.majSemi:-1} minSemi={data?data.minSemi:-1}/>
+    </div>
+  );
 
   return (
     <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"system-ui,sans-serif",color:CLR.text,boxSizing:"border-box"}}>
@@ -457,19 +463,13 @@ function App(){
         </div>
       </div>
 
-      <div style={{marginBottom:"1rem"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 1–4</div>
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 5–7</div>
-          <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>SCALE</div>
-          {cells}
-        </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,alignItems:"start"}}>
-        <div/>
-        <StaffKeySignature majSemi={data?data.majSemi:0} isFlat={data?data.isFlat:false}/>
-        <CircleOfFifths majSemi={data?data.majSemi:-1} minSemi={data?data.minSemi:-1}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,alignItems:"start"}}>
+        <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>SCALE</div>
+        <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 1–4</div>
+        <div style={{fontSize:10,color:CLR.muted,letterSpacing:.5,paddingBottom:2}}>DIATONIC CHORDS 5–7</div>
+        {leftCol}
+        {midCol}
+        {rightCol}
       </div>
     </div>
   );
