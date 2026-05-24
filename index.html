@@ -432,35 +432,33 @@ function App(){
   return (
     <div style={{background:CLR.bg,minHeight:"100vh",padding:"1rem",fontFamily:"system-ui,sans-serif",color:CLR.text,boxSizing:"border-box"}}>
       <div style={{marginBottom:"0.75rem"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span style={{fontSize:13,fontWeight:700,color:CLR.text,letterSpacing:1,whiteSpace:"nowrap"}}>PIANO GUIDE</span>
           <div style={{display:"flex",gap:5,flex:1,minWidth:160}}>
             <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
               placeholder="キー（例: C, Am, F#, Bbm）"
               style={{flex:1,background:CLR.surface,border:"0.5px solid "+CLR.border,color:CLR.text,borderRadius:6,padding:"5px 9px",fontSize:12,outline:"none"}}/>
-            <button onClick={handleSubmit} style={{background:CLR.accent,border:"none",color:"#fff",borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>表示</button>
+            <button onClick={handleSubmit} style={{background:CLR.accent,border:"none",color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>表示</button>
           </div>
-          <Toggle options={[{v:"3",label:"3和音"},{v:"4",label:"4和音"},{v:"tension",label:"テンション"}]} value={toneMode} onChange={setToneMode}/>
-          <Toggle options={[{v:"form",label:"フォーム"},{v:"all",label:"全域"}]} value={displayMode} onChange={setDisplayMode}/>
-        </div>
-        {error&&<div style={{fontSize:11,color:CLR.red,marginBottom:4}}>{error}</div>}
-        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
           {data
             ?<>
-              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
+              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 10px",whiteSpace:"nowrap"}}>
                 <span style={{fontSize:10,color:CLR.muted}}>KEY </span>
-                <span style={{fontSize:14,fontWeight:700,color:CLR.green}}>{data.displayMaj} major</span>
+                <span style={{fontSize:13,fontWeight:700,color:CLR.green}}>{data.displayMaj} major</span>
               </div>
-              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
-                <span style={{fontSize:10,color:CLR.muted}}>並行短調 </span>
-                <span style={{fontSize:14,fontWeight:700,color:CLR.accent}}>{data.displayMin}</span>
+              <div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 10px",whiteSpace:"nowrap"}}>
+                <span style={{fontSize:10,color:CLR.muted}}>平行短調 </span>
+                <span style={{fontSize:13,fontWeight:700,color:CLR.accent}}>{data.displayMin}</span>
               </div>
             </>
-            :<div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 12px"}}>
+            :<div style={{background:CLR.surface,border:"0.5px solid "+CLR.border,borderRadius:6,padding:"4px 10px",whiteSpace:"nowrap"}}>
               <span style={{fontSize:12,color:CLR.muted}}>— キーを入力してください —</span>
             </div>
           }
+          <Toggle options={[{v:"3",label:"3和音"},{v:"4",label:"4和音"},{v:"tension",label:"テンション"}]} value={toneMode} onChange={setToneMode}/>
+          <Toggle options={[{v:"form",label:"フォーム"},{v:"all",label:"全域"}]} value={displayMode} onChange={setDisplayMode}/>
         </div>
+        {error&&<div style={{fontSize:11,color:CLR.red,marginTop:4}}>{error}</div>}
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,alignItems:"start"}}>
